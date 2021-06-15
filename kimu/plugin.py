@@ -5,9 +5,12 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QAction, QWidget
 from qgis.gui import QgisInterface
 
+from .core.select_tool import SelectTool
 from .qgis_plugin_tools.tools.custom_logging import setup_logger, teardown_logger
 from .qgis_plugin_tools.tools.i18n import setup_translation, tr
 from .qgis_plugin_tools.tools.resources import plugin_name
+
+LOGGER = setup_logger(plugin_name())
 
 
 class Plugin:
@@ -17,7 +20,7 @@ class Plugin:
 
         self.iface = iface
 
-        setup_logger(plugin_name())
+        self.selection_tool: Optional[SelectTool] = None
 
         # initialize locale
         locale, file_path = setup_translation()
@@ -100,13 +103,17 @@ class Plugin:
 
     def initGui(self) -> None:  # noqa N802
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
-        self.add_action(
+        self.selection_tool = SelectTool(self.iface)
+        selection_action = self.add_action(
             "",
             text=tr(plugin_name()),
-            callback=self.run,
+            callback=self.activate_selection_tool,
             parent=self.iface.mainWindow(),
-            add_to_toolbar=False,
+            add_to_menu=False,
+            add_to_toolbar=True,
         )
+        selection_action.setCheckable(True)
+        self.selection_tool.setAction(selection_action)
 
     def onClosePlugin(self) -> None:  # noqa N802
         """Cleanup necessary items here when plugin dockwidget is closed"""
@@ -119,6 +126,6 @@ class Plugin:
             self.iface.removeToolBarIcon(action)
         teardown_logger(plugin_name())
 
-    def run(self) -> None:
-        """Run method that performs all the real work"""
-        print("Hello QGIS plugin")
+    def activate_selection_tool(self) -> None:
+        canvas = self.iface.mapCanvas()
+        canvas.setMapTool(self.selection_tool)
