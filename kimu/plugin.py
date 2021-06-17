@@ -1,14 +1,16 @@
 from typing import Callable, List, Optional
 
-from PyQt5.QtCore import QCoreApplication, QTranslator
+from PyQt5.QtCore import QCoreApplication, Qt, QTranslator
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QAction, QWidget
 from qgis.gui import QgisInterface
 
-from .core.select_tool import SelectTool
+from .core.explode_tool import ExplodeTool
+from .core.split_tool import SplitTool
 from .qgis_plugin_tools.tools.custom_logging import setup_logger, teardown_logger
 from .qgis_plugin_tools.tools.i18n import setup_translation, tr
 from .qgis_plugin_tools.tools.resources import plugin_name
+from .ui.split_tool_dockwidget import SplitToolDockWidget
 
 LOGGER = setup_logger(plugin_name())
 
@@ -19,8 +21,9 @@ class Plugin:
     def __init__(self, iface: QgisInterface) -> None:
 
         self.iface = iface
-
-        self.selection_tool: Optional[SelectTool] = None
+        split_tool_dockwidget = SplitToolDockWidget(iface)
+        self.split_tool = SplitTool(self.iface, split_tool_dockwidget)
+        self.explode_tool = ExplodeTool(self.iface, self.split_tool)
 
         # initialize locale
         locale, file_path = setup_translation()
@@ -103,17 +106,26 @@ class Plugin:
 
     def initGui(self) -> None:  # noqa N802
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
-        self.selection_tool = SelectTool(self.iface)
-        selection_action = self.add_action(
+        explode_action = self.add_action(
             "",
-            text=tr(plugin_name()),
-            callback=self.activate_selection_tool,
+            text=tr("Explode"),
+            callback=self.activate_explode_tool,
             parent=self.iface.mainWindow(),
             add_to_menu=False,
             add_to_toolbar=True,
         )
-        selection_action.setCheckable(True)
-        self.selection_tool.setAction(selection_action)
+        explode_action.setCheckable(True)
+        self.explode_tool.setAction(explode_action)
+        split_action = self.add_action(
+            "",
+            text=tr("Split"),
+            callback=self.activate_split_tool,
+            parent=self.iface.mainWindow(),
+            add_to_menu=False,
+            add_to_toolbar=True,
+        )
+        split_action.setCheckable(True)
+        self.split_tool.setAction(split_action)
 
     def onClosePlugin(self) -> None:  # noqa N802
         """Cleanup necessary items here when plugin dockwidget is closed"""
@@ -126,6 +138,9 @@ class Plugin:
             self.iface.removeToolBarIcon(action)
         teardown_logger(plugin_name())
 
-    def activate_selection_tool(self) -> None:
-        canvas = self.iface.mapCanvas()
-        canvas.setMapTool(self.selection_tool)
+    def activate_explode_tool(self) -> None:
+        self.iface.mapCanvas().setMapTool(self.explode_tool)
+
+    def activate_split_tool(self) -> None:
+        self.iface.addDockWidget(Qt.RightDockWidgetArea, self.split_tool.ui)
+        self.iface.mapCanvas().setMapTool(self.split_tool)
