@@ -17,11 +17,11 @@ class SplitToolDockWidget(QtWidgets.QDockWidget, FORM_CLASS):  # type: ignore
         self.qpushbutton_copy: QPushButton
         self.qpushbutton_copy.clicked.connect(self.__copy_clicked)
 
-    def get_split_value(self) -> int:
+    def get_split_parts(self) -> int:
         self.qgsspinbox_split: QgsSpinBox
         return self.qgsspinbox_split.value()
 
-    def set_result_value(self, value: float) -> None:
+    def set_split_length(self, value: float) -> None:
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self)
         result_string = f"{value:.3f}"
         self.qlabel_value.setText(result_string)

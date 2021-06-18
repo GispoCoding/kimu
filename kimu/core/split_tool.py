@@ -1,8 +1,16 @@
 from typing import List
 
 from PyQt5.QtCore import Qt
-from qgis._core import QgsGeometry, QgsVectorLayer, QgsWkbTypes
-from qgis._gui import QgisInterface, QgsMapMouseEvent, QgsMapToolIdentify
+from qgis import processing
+from qgis.core import (
+    QgsFeatureRequest,
+    QgsGeometry,
+    QgsProcessingFeatureSourceDefinition,
+    QgsProject,
+    QgsVectorLayer,
+    QgsWkbTypes,
+)
+from qgis.gui import QgisInterface, QgsMapMouseEvent, QgsMapToolIdentify
 
 from ..qgis_plugin_tools.tools.custom_logging import setup_logger
 from ..qgis_plugin_tools.tools.i18n import tr
@@ -48,10 +56,38 @@ class SplitTool(SelectTool):
             LOGGER.info(
                 tr("Please select one line"), extra={"details": "", "duration": 1}
             )
-            self.ui.set_result_value(0)
+            self.ui.set_split_length(0)
             return
+        self.layer.selectByIds(
+            [f.mFeature.id() for f in found_features], QgsVectorLayer.SetSelection
+        )
         geometry: QgsGeometry = found_features[0].mFeature.geometry()
 
-        split_to = self.ui.get_split_value()
-        result = geometry.length() / split_to
-        self.ui.set_result_value(result)
+        split_to = self.ui.get_split_parts()
+        split_length = geometry.length() / split_to
+        self.ui.set_split_length(split_length)
+
+        split_params = {
+            "INPUT": QgsProcessingFeatureSourceDefinition(
+                self.layer.id(),
+                selectedFeaturesOnly=True,
+                featureLimit=-1,
+                geometryCheck=QgsFeatureRequest.GeometryAbortOnInvalid,
+            ),
+            "LENGTH": split_length,
+            "OUTPUT": "memory:",
+        }
+        split_result = processing.run("native:splitlinesbylength", split_params)
+        split_layer = split_result["OUTPUT"]
+        split_layer.setName(tr("Split line"))
+        split_layer.renderer().symbol().setWidth(2)
+        # TODO: set visualization to categorized with expression rand(1,100)
+        QgsProject.instance().addMapLayer(split_layer)
+
+        extract_result = processing.run(
+            "native:extractvertices", {"INPUT": split_layer, "OUTPUT": "memory:"}
+        )
+        extract_layer = extract_result["OUTPUT"]
+        extract_layer.setName(tr("Nodes"))
+        extract_layer.renderer().symbol().setSize(3)
+        QgsProject.instance().addMapLayer(extract_layer)
