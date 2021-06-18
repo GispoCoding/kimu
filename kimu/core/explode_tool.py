@@ -34,11 +34,14 @@ class ExplodeTool(SelectTool):
     def canvasPressEvent(self, event: QgsMapMouseEvent) -> None:  # noqa: N802
         """Selects clicked polygon feature(s) and explodes them to lines."""
         if self.iface.activeLayer() != self.layer:
-            LOGGER.warning(tr("Please select a polygon layer"))
+            LOGGER.warning(tr("Please select a polygon layer"), extra={"details": ""})
             return
         found_features = self.identify(
             event.x(), event.y(), [self.layer], QgsMapToolIdentify.ActiveLayer
         )
+        if not len(found_features):
+            return
+
         self.layer.selectByIds(
             [f.mFeature.id() for f in found_features], QgsVectorLayer.SetSelection
         )
@@ -63,4 +66,5 @@ class ExplodeTool(SelectTool):
         explode_layer.renderer().symbol().setWidth(2)
         QgsProject.instance().addMapLayer(explode_layer)
 
+        self.layer.removeSelection()
         self.split_tool.manual_activate()

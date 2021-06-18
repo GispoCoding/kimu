@@ -39,13 +39,16 @@ class SplitTool(SelectTool):
 
     def canvasPressEvent(self, event: QgsMapMouseEvent) -> None:  # noqa: N802
         if self.iface.activeLayer() != self.layer:
-            LOGGER.warning(tr("Please select a line layer"))
+            LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
             return
         found_features: List[QgsMapToolIdentify.IdentifyResult] = self.identify(
             event.x(), event.y(), [self.layer], QgsMapToolIdentify.ActiveLayer
         )
         if len(found_features) != 1:
-            LOGGER.warning(tr("Please select one line"))
+            LOGGER.info(
+                tr("Please select one line"), extra={"details": "", "duration": 1}
+            )
+            self.ui.set_result_value(0)
             return
         geometry: QgsGeometry = found_features[0].mFeature.geometry()
 
