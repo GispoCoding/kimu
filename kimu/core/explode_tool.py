@@ -1,54 +1,50 @@
 from qgis import processing
-from qgis._core import (
+from qgis.core import (
     QgsFeatureRequest,
     QgsProcessingFeatureSourceDefinition,
     QgsProject,
+    QgsVectorLayer,
+    QgsWkbTypes,
 )
-from qgis.core import QgsVectorLayer, QgsWkbTypes
-from qgis.gui import QgisInterface, QgsMapMouseEvent, QgsMapToolIdentify
+from qgis.utils import iface
 
 from ..qgis_plugin_tools.tools.custom_logging import setup_logger
 from ..qgis_plugin_tools.tools.i18n import tr
 from ..qgis_plugin_tools.tools.resources import plugin_name
-from .select_tool import SelectTool
 from .split_tool import SplitTool
 
 LOGGER = setup_logger(plugin_name())
 
 
-class ExplodeTool(SelectTool):
-    def __init__(self, iface: QgisInterface, split_tool: SplitTool) -> None:
-        super().__init__(iface)
+class ExplodeTool:
+    def __init__(self, split_tool: SplitTool) -> None:
         self.split_tool = split_tool
 
-    def active_changed(self, layer: QgsVectorLayer) -> None:
-        """Triggered when active layer changes."""
+    @staticmethod
+    def __check_valid_layer(layer: QgsVectorLayer) -> bool:
+        """Checks if layer is valid"""
         if (
             isinstance(layer, QgsVectorLayer)
             and layer.isSpatial()
             and layer.geometryType() == QgsWkbTypes.PolygonGeometry
         ):
-            self.layer = layer
-            self.setLayer(self.layer)
+            return True
+        return False
 
-    def canvasPressEvent(self, event: QgsMapMouseEvent) -> None:  # noqa: N802
-        """Selects clicked polygon feature(s) and explodes them to lines."""
-        if self.iface.activeLayer() != self.layer:
+    def run(self) -> None:
+        """Explodes selected polygon feature to lines."""
+        layer = iface.activeLayer()
+        if not self.__check_valid_layer(layer):
             LOGGER.warning(tr("Please select a polygon layer"), extra={"details": ""})
             return
-        found_features = self.identify(
-            event.x(), event.y(), [self.layer], QgsMapToolIdentify.ActiveLayer
-        )
-        if not len(found_features):
-            return
 
-        self.layer.selectByIds(
-            [f.mFeature.id() for f in found_features], QgsVectorLayer.SetSelection
-        )
+        if len(layer.selectedFeatures()) != 1:
+            LOGGER.warning(tr("Please select a single feature"), extra={"details": ""})
+            return
 
         line_params = {
             "INPUT": QgsProcessingFeatureSourceDefinition(
-                self.layer.id(),
+                layer.id(),
                 selectedFeaturesOnly=True,
                 featureLimit=-1,
                 geometryCheck=QgsFeatureRequest.GeometryAbortOnInvalid,
@@ -66,5 +62,4 @@ class ExplodeTool(SelectTool):
         explode_layer.renderer().symbol().setWidth(2)
         QgsProject.instance().addMapLayer(explode_layer)
 
-        self.layer.removeSelection()
         self.split_tool.manual_activate()

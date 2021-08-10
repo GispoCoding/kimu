@@ -23,7 +23,7 @@ class Plugin:
         self.iface = iface
         split_tool_dockwidget = SplitToolDockWidget(iface)
         self.split_tool = SplitTool(self.iface, split_tool_dockwidget)
-        self.explode_tool = ExplodeTool(self.iface, self.split_tool)
+        self.explode_tool = ExplodeTool(self.split_tool)
 
         # initialize locale
         locale, file_path = setup_translation()
@@ -106,7 +106,7 @@ class Plugin:
 
     def initGui(self) -> None:  # noqa N802
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
-        explode_action = self.add_action(
+        self.add_action(
             "",
             text=tr("Explode"),
             callback=self.activate_explode_tool,
@@ -114,8 +114,6 @@ class Plugin:
             add_to_menu=False,
             add_to_toolbar=True,
         )
-        explode_action.setCheckable(True)
-        self.explode_tool.setAction(explode_action)
         split_action = self.add_action(
             "",
             text=tr("Split"),
@@ -139,7 +137,7 @@ class Plugin:
         teardown_logger(plugin_name())
 
     def activate_explode_tool(self) -> None:
-        self.iface.mapCanvas().setMapTool(self.explode_tool)
+        self.explode_tool.run()
 
     def activate_split_tool(self) -> None:
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.split_tool.ui)
