@@ -46,6 +46,7 @@ class SplitTool(SelectTool):
             self.setLayer(self.layer)
 
     def canvasPressEvent(self, event: QgsMapMouseEvent) -> None:  # noqa: N802
+        """Identify clicked line feature and split it to N parts."""
         if self.iface.activeLayer() != self.layer:
             LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
             return
@@ -81,11 +82,12 @@ class SplitTool(SelectTool):
         split_layer = split_result["OUTPUT"]
         split_layer.setName(tr("Split line"))
         split_layer.renderer().symbol().setWidth(2)
-        # TODO: set visualization to categorized with expression rand(1,100)
+        # TODO: set visualization to categorized with expression $id
         QgsProject.instance().addMapLayer(split_layer)
 
         extract_result = processing.run(
-            "native:extractvertices", {"INPUT": split_layer, "OUTPUT": "memory:"}
+            "native:extractspecificvertices",
+            {"INPUT": split_layer, "VERTICES": "0,-1", "OUTPUT": "memory:"},
         )
         extract_layer = extract_result["OUTPUT"]
         extract_layer.setName(tr("Nodes"))
