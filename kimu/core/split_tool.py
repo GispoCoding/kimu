@@ -113,7 +113,7 @@ class SplitTool(SelectTool):
         split_layer_ids = [feature.id() for feature in split_layer.getFeatures()]
         categories = []
         for id_ in split_layer_ids:
-            symbol = QgsLineSymbol.createSimple(properties={"width": 2})
+            symbol = QgsLineSymbol.createSimple(properties={"width": "2"})
             category = QgsRendererCategory(id_, symbol, str(id_))
             categories.append(category)
         renderer = QgsCategorizedSymbolRenderer("$id", categories)
