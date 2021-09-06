@@ -36,9 +36,6 @@ class SplitTool(SelectTool):
         self.action().setChecked(True)
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.ui)
 
-    def set_dock_widget(self, dock_widget: SplitToolDockWidget) -> None:
-        self.__dock_widget = dock_widget
-
     def active_changed(self, layer: QgsVectorLayer) -> None:
         """Triggered when active layer changes."""
         if (
