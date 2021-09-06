@@ -4,14 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.2.1] - 2020-09-06
+## [0.2.1] - 2021-09-06
 ### Added
 - First unit tests.
 
 ### Fixed
 - Check if color ramp "Turbo" exists, otherwise use last available ramp.
 
-## [0.2.0] - 2020-09-03
+## [0.2.0] - 2021-09-03
 ### Added
 - Apply different colors for segments of split line to help distinguish them.
 
