@@ -3,3 +3,5 @@ venv/
 .venv/
 start_ide.bat
 .idea/
+__pycache__
+*.log
