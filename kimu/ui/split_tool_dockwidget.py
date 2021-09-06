@@ -1,7 +1,7 @@
 from PyQt5.QtCore import Qt, pyqtSlot
 from PyQt5.QtWidgets import QPushButton, QWidget
-from qgis._core import QgsApplication
-from qgis._gui import QgisInterface, QgsSpinBox
+from qgis.core import QgsApplication
+from qgis.gui import QgisInterface, QgsSpinBox
 from qgis.PyQt import QtWidgets
 
 from ..qgis_plugin_tools.tools.resources import load_ui

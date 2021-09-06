@@ -36,9 +36,6 @@ class SplitTool(SelectTool):
         self.action().setChecked(True)
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.ui)
 
-    def set_dock_widget(self, dock_widget: SplitToolDockWidget) -> None:
-        self.__dock_widget = dock_widget
-
     def active_changed(self, layer: QgsVectorLayer) -> None:
         """Triggered when active layer changes."""
         if (
@@ -117,7 +114,12 @@ class SplitTool(SelectTool):
             category = QgsRendererCategory(id_, symbol, str(id_))
             categories.append(category)
         renderer = QgsCategorizedSymbolRenderer("$id", categories)
-        ramp = QgsStyle().defaultStyle().colorRamp("Turbo")
+
+        color_ramps = QgsStyle().defaultStyle().colorRampNames()
+        ramp_name = "Turbo"
+        if ramp_name not in color_ramps:
+            ramp_name = color_ramps[-1]
+        ramp = QgsStyle().defaultStyle().colorRamp(ramp_name)
         renderer.updateColorRamp(ramp)
         split_layer.setRenderer(renderer)
 
