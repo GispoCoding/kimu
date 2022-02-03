@@ -7,6 +7,7 @@ from qgis.gui import QgisInterface
 
 from .core.explode_tool import ExplodeTool
 from .core.split_tool import SplitTool
+from .core.explode_lines import ExplodeLines
 from .qgis_plugin_tools.tools.custom_logging import setup_logger, teardown_logger
 from .qgis_plugin_tools.tools.i18n import setup_translation, tr
 from .qgis_plugin_tools.tools.resources import plugin_name
@@ -24,6 +25,7 @@ class Plugin:
         split_tool_dockwidget = SplitToolDockWidget(iface)
         self.split_tool = SplitTool(self.iface, split_tool_dockwidget)
         self.explode_tool = ExplodeTool(self.split_tool)
+        self.explode_lines = ExplodeLines()
 
         # initialize locale
         locale, file_path = setup_translation()
@@ -114,6 +116,14 @@ class Plugin:
             add_to_menu=False,
             add_to_toolbar=True,
         )
+        self.add_action(
+            "",
+            text=tr("Explode lines"),
+            callback=self.activate_explode_lines,
+            parent=self.iface.mainWindow(),
+            add_to_menu=False,
+            add_to_toolbar=True,
+        )
         split_action = self.add_action(
             "",
             text=tr("Split"),
@@ -138,6 +148,9 @@ class Plugin:
 
     def activate_explode_tool(self) -> None:
         self.explode_tool.run()
+
+    def activate_explode_lines(self) -> None:
+        self.explode_lines.run()
 
     def activate_split_tool(self) -> None:
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.split_tool.ui)
