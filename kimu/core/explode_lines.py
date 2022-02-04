@@ -44,14 +44,18 @@ class ExplodeLines:
             ),
             "OUTPUT": "memory:",
         }
+
         point_result = processing.run("native:explodelines", point_params)
         point_layer = point_result["OUTPUT"]
 
-        explode_params = {"INPUT": point_layer, "OUTPUT": "memory:"}
-        explode_result = processing.run("native:extractvertices", explode_params)
+        explode_params1 = {"INPUT": point_layer, "OUTPUT": "memory:"}
+        explode_result1 = processing.run("native:extractvertices", explode_params1)
+        explode_layer1 = explode_result1["OUTPUT"]
 
-        explode_layer: QgsVectorLayer = explode_result["OUTPUT"]
+        explode_params2 = {"INPUT": explode_layer1, "OUTPUT": "memory:"}
+        explode_result2 = processing.run("native:deleteduplicategeometries", explode_params2)
+
+        explode_layer: QgsVectorLayer = explode_result2["OUTPUT"]
         explode_layer.setName(tr("Exploded line"))
         explode_layer.renderer().symbol().setSize(2)
         QgsProject.instance().addMapLayer(explode_layer)
-

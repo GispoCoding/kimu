@@ -8,6 +8,7 @@ from qgis.gui import QgisInterface
 from .core.explode_tool import ExplodeTool
 from .core.split_tool import SplitTool
 from .core.explode_lines import ExplodeLines
+from .core.intersection_tool_lines import IntersectionLines
 from .qgis_plugin_tools.tools.custom_logging import setup_logger, teardown_logger
 from .qgis_plugin_tools.tools.i18n import setup_translation, tr
 from .qgis_plugin_tools.tools.resources import plugin_name
@@ -26,6 +27,7 @@ class Plugin:
         self.split_tool = SplitTool(self.iface, split_tool_dockwidget)
         self.explode_tool = ExplodeTool(self.split_tool)
         self.explode_lines = ExplodeLines()
+        self.intersection_tool_lines = IntersectionLines()
 
         # initialize locale
         locale, file_path = setup_translation()
@@ -124,6 +126,14 @@ class Plugin:
             add_to_menu=False,
             add_to_toolbar=True,
         )
+        self.add_action(
+            "",
+            text=tr("Intersect lines"),
+            callback=self.activate_intersection_tool_lines,
+            parent=self.iface.mainWindow(),
+            add_to_menu=False,
+            add_to_toolbar=True,
+        )
         split_action = self.add_action(
             "",
             text=tr("Split"),
@@ -151,6 +161,9 @@ class Plugin:
 
     def activate_explode_lines(self) -> None:
         self.explode_lines.run()
+
+    def activate_intersection_tool_lines(self) -> None:
+        self.intersection_tool_lines.run()
 
     def activate_split_tool(self) -> None:
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.split_tool.ui)
