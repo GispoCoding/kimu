@@ -5,10 +5,11 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QAction, QWidget
 from qgis.gui import QgisInterface
 
-from .core.explode_tool import ExplodeTool
-from .core.split_tool import SplitTool
 from .core.explode_lines import ExplodeLines
+from .core.explode_lines2points import ExplodeLines2points
+from .core.explode_tool import ExplodeTool
 from .core.intersection_tool_lines import IntersectionLines
+from .core.split_tool import SplitTool
 from .qgis_plugin_tools.tools.custom_logging import setup_logger, teardown_logger
 from .qgis_plugin_tools.tools.i18n import setup_translation, tr
 from .qgis_plugin_tools.tools.resources import plugin_name
@@ -27,6 +28,7 @@ class Plugin:
         self.split_tool = SplitTool(self.iface, split_tool_dockwidget)
         self.explode_tool = ExplodeTool(self.split_tool)
         self.explode_lines = ExplodeLines()
+        self.explode_lines2points = ExplodeLines2points()
         self.intersection_tool_lines = IntersectionLines()
 
         # initialize locale
@@ -112,7 +114,7 @@ class Plugin:
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
         self.add_action(
             "",
-            text=tr("Explode"),
+            text=tr("Explode polygon"),
             callback=self.activate_explode_tool,
             parent=self.iface.mainWindow(),
             add_to_menu=False,
@@ -120,8 +122,16 @@ class Plugin:
         )
         self.add_action(
             "",
-            text=tr("Explode lines"),
+            text=tr("Explode line(s)"),
             callback=self.activate_explode_lines,
+            parent=self.iface.mainWindow(),
+            add_to_menu=False,
+            add_to_toolbar=True,
+        )
+        self.add_action(
+            "",
+            text=tr("Explode line(s) to points"),
+            callback=self.activate_explode_lines2points,
             parent=self.iface.mainWindow(),
             add_to_menu=False,
             add_to_toolbar=True,
@@ -161,6 +171,9 @@ class Plugin:
 
     def activate_explode_lines(self) -> None:
         self.explode_lines.run()
+
+    def activate_explode_lines2points(self) -> None:
+        self.explode_lines2points.run()
 
     def activate_intersection_tool_lines(self) -> None:
         self.intersection_tool_lines.run()

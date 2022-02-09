@@ -16,7 +16,6 @@ LOGGER = setup_logger(plugin_name())
 
 
 class ExplodeLines:
-
     @staticmethod
     def __check_valid_layer(layer: QgsVectorLayer) -> bool:
         """Checks if layer is valid"""
@@ -29,13 +28,13 @@ class ExplodeLines:
         return False
 
     def run(self) -> None:
-        """Explodes selected line features to points."""
+        """Explodes selected line features to segment lines."""
         layer = iface.activeLayer()
         if not self.__check_valid_layer(layer):
             LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
             return
 
-        point_params = {
+        line_params = {
             "INPUT": QgsProcessingFeatureSourceDefinition(
                 layer.id(),
                 selectedFeaturesOnly=True,
@@ -45,17 +44,9 @@ class ExplodeLines:
             "OUTPUT": "memory:",
         }
 
-        point_result = processing.run("native:explodelines", point_params)
-        point_layer = point_result["OUTPUT"]
+        line_result = processing.run("native:explodelines", line_params)
+        result_layer = line_result["OUTPUT"]
 
-        explode_params1 = {"INPUT": point_layer, "OUTPUT": "memory:"}
-        explode_result1 = processing.run("native:extractvertices", explode_params1)
-        explode_layer1 = explode_result1["OUTPUT"]
-
-        explode_params2 = {"INPUT": explode_layer1, "OUTPUT": "memory:"}
-        explode_result2 = processing.run("native:deleteduplicategeometries", explode_params2)
-
-        explode_layer: QgsVectorLayer = explode_result2["OUTPUT"]
-        explode_layer.setName(tr("Exploded line"))
-        explode_layer.renderer().symbol().setSize(2)
-        QgsProject.instance().addMapLayer(explode_layer)
+        result_layer.setName(tr("Exploded line"))
+        result_layer.renderer().symbol().setWidth(1)
+        QgsProject.instance().addMapLayer(result_layer)

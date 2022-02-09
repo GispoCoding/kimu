@@ -1,13 +1,15 @@
-from qgis.PyQt.QtCore import QVariant
+from qgis import processing
 from qgis.core import (
     QgsFeature,
+    QgsFeatureRequest,
     QgsField,
+    QgsGeometry,
     QgsPointXY,
     QgsProject,
-    QgsGeometry,
     QgsVectorLayer,
     QgsWkbTypes,
 )
+from qgis.PyQt.QtCore import QVariant
 from qgis.utils import iface
 
 from ..qgis_plugin_tools.tools.custom_logging import setup_logger
@@ -18,7 +20,6 @@ LOGGER = setup_logger(plugin_name())
 
 
 class IntersectionLines:
-
     @staticmethod
     def __check_valid_layer(layer: QgsVectorLayer) -> bool:
         """Checks if layer is valid"""
@@ -31,42 +32,79 @@ class IntersectionLines:
         return False
 
     def run(self) -> None:
-        layer = iface.activeLayer()
-        if not self.__check_valid_layer(layer):
+        """Determines the intersection point of the selected line features."""
+        selected_layer = iface.activeLayer()
+        if not self.__check_valid_layer(selected_layer):
             LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
             return
 
-        if len(layer.selectedFeatures()) != 2:
-            LOGGER.warning(tr("Please select two line features"), extra={"details": ""})
+        if len(selected_layer.selectedFeatures()) != 2:
+            LOGGER.warning(
+                tr("Please select two line features from same layer"),
+                extra={"details": ""},
+            )
             return
 
-        vl = QgsVectorLayer("Point", "temp", "memory")
-        crs = layer.crs()
-        vl.setCrs(crs)
-        pr = vl.dataProvider()
-        pr.addAttributes([QgsField("xkoord", QVariant.Double), QgsField("ykoord", QVariant.Double)])
-        vl.updateFields()
+        temp_layer = selected_layer.materialize(
+            QgsFeatureRequest().setFilterFids(selected_layer.selectedFeatureIds())
+        )
+        params1 = {"INPUT": temp_layer, "OUTPUT": "memory:"}
+        vertices = processing.run("native:extractvertices", params1)
+        vertices_layer = vertices["OUTPUT"]
 
-        l = list()
+        if vertices_layer.featureCount() > 4:
+            LOGGER.warning(
+                tr("Please use Explode line(s) tool first!"), extra={"details": ""}
+            )
+            return
 
-        features = layer.selectedFeatures()
+        result_layer = QgsVectorLayer("Point", "temp", "memory")
+        crs = selected_layer.crs()
+        result_layer.setCrs(crs)
+        result_layer_dataprovider = result_layer.dataProvider()
+        result_layer_dataprovider.addAttributes(
+            [QgsField("xcoord", QVariant.Double), QgsField("ycoord", QVariant.Double)]
+        )
+        result_layer.updateFields()
+
+        line_points = []
+
+        features = selected_layer.selectedFeatures()
         for feat in features:
-            viiva = feat.geometry().asPolyline()
-            pxy = QgsPointXY(viiva[0])
-            pxy2 = QgsPointXY(viiva[-1])
-            l.extend([pxy.x(), pxy.y(), pxy2.x(), pxy2.y()])
+            line_feat = feat.geometry().asPolyline()
+            start_point = QgsPointXY(line_feat[0])
+            end_point = QgsPointXY(line_feat[-1])
+            line_points.extend(
+                [start_point.x(), start_point.y(), end_point.x(), end_point.y()]
+            )
 
-        # x1=l[0], y1=l[1], x2=l[2], y2=l[3], x3=l[4], y3=l[5], x4=l[6], y4=l[7]
-        x = (l[0]*((l[3]-l[1])/(l[2]-l[0]))-l[4]*((l[7]-l[5])/(l[6]-l[4]))+l[5]-l[1]) / (((l[3]-l[1])/(l[2]-l[0]))-((l[7]-l[5])/(l[6]-l[4])))
-        y = ((l[3]-l[1])/(l[2]-l[0]))*(x-l[0])+l[1]
+        # 1. Determine the functions of the straight lines each of the selected line features represent
+        # (each line can be seen as a limited representation of a function determining a line which has no start and end points)
+        # See e.g. https://www.cuemath.com/geometry/two-point-form/ for more information
+        # 2. Search for intersection point of these two functions by analytically modifying the resulting equation so that
+        # it is possible to solve x (and then y)
+        x = (
+            line_points[0]
+            * ((line_points[3] - line_points[1]) / (line_points[2] - line_points[0]))
+            - line_points[4]
+            * ((line_points[7] - line_points[5]) / (line_points[6] - line_points[4]))
+            + line_points[5]
+            - line_points[1]
+        ) / (
+            ((line_points[3] - line_points[1]) / (line_points[2] - line_points[0]))
+            - ((line_points[7] - line_points[5]) / (line_points[6] - line_points[4]))
+        )
+        y = ((line_points[3] - line_points[1]) / (line_points[2] - line_points[0])) * (
+            x - line_points[0]
+        ) + line_points[1]
 
-        piste = QgsPointXY(x, y)
+        intersection_point = QgsPointXY(x, y)
         f = QgsFeature()
-        f.setGeometry(QgsGeometry.fromPointXY(piste))
-        f.setAttributes([round(x,2), round(y,2)])
-        pr.addFeature(f)
-        vl.updateExtents()
+        f.setGeometry(QgsGeometry.fromPointXY(intersection_point))
+        f.setAttributes([round(x, 2), round(y, 2)])
+        result_layer_dataprovider.addFeature(f)
+        result_layer.updateExtents()
 
-        vl.setName(tr("Intersection point"))
-        vl.renderer().symbol().setSize(2)
-        QgsProject.instance().addMapLayer(vl)
+        result_layer.setName(tr("Intersection point"))
+        result_layer.renderer().symbol().setSize(2)
+        QgsProject.instance().addMapLayer(result_layer)
