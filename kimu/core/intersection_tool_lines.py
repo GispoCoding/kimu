@@ -78,11 +78,16 @@ class IntersectionLines:
                 [start_point.x(), start_point.y(), end_point.x(), end_point.y()]
             )
 
-        # 1. Determine the functions of the straight lines each of the selected line features represent
-        # (each line can be seen as a limited representation of a function determining a line which has no start and end points)
-        # See e.g. https://www.cuemath.com/geometry/two-point-form/ for more information
-        # 2. Search for intersection point of these two functions by analytically modifying the resulting equation so that
-        # it is possible to solve x (and then y)
+        # 1. Determine the functions of the straight lines each
+        # of the selected line features represent (each line can
+        # be seen as a limited representation of a function determining
+        # a line which has no start and end points).
+        # See e.g.
+        # https://www.cuemath.com/geometry/two-point-form/
+        # for more information.
+        # 2. Search for intersection point of these two functions
+        # by analytically modifying the resulting equation so
+        # that it is possible to solve x (and then y).
         x = (
             line_points[0]
             * ((line_points[3] - line_points[1]) / (line_points[2] - line_points[0]))
