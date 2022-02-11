@@ -78,6 +78,16 @@ class IntersectionLines:
                 [start_point.x(), start_point.y(), end_point.x(), end_point.y()]
             )
 
+        # Check that the selected line features are not parallel by
+        # calculating the slopes of the selected lines
+        slope1 = (line_points[3]-line_points[1]) / (line_points[2]-line_points[0])
+        slope2 = (line_points[7] - line_points[5]) / (line_points[6] - line_points[4])
+        if slope1==slope2:
+            LOGGER.warning(
+                tr("Lines are parallel; there is no intersection point!"), extra={"details": ""}
+            )
+            return
+
         # 1. Determine the functions of the straight lines each
         # of the selected line features represent (each line can
         # be seen as a limited representation of a function determining
@@ -102,6 +112,15 @@ class IntersectionLines:
         y = ((line_points[3] - line_points[1]) / (line_points[2] - line_points[0])) * (
             x - line_points[0]
         ) + line_points[1]
+
+        # Check that the result point lies in the map canvas extent
+        extent = iface.mapCanvas().extent()
+
+        if x < extent.xMinimum() or x > extent.xMaximum() or y < extent.yMinimum() or y > extent.yMaximum():
+            LOGGER.warning(
+                tr("Intersection point lies outside of the map canvas!"), extra={"details": ""}
+            )
+            return
 
         intersection_point = QgsPointXY(x, y)
         f = QgsFeature()
