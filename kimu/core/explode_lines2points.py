@@ -11,38 +11,30 @@ from qgis.utils import iface
 from ..qgis_plugin_tools.tools.custom_logging import setup_logger
 from ..qgis_plugin_tools.tools.i18n import tr
 from ..qgis_plugin_tools.tools.resources import plugin_name
-from .split_tool import SplitTool
 
 LOGGER = setup_logger(plugin_name())
 
 
-class ExplodeTool:
-    def __init__(self, split_tool: SplitTool) -> None:
-        self.split_tool = split_tool
-
+class ExplodeLines2points:
     @staticmethod
     def __check_valid_layer(layer: QgsVectorLayer) -> bool:
         """Checks if layer is valid"""
         if (
             isinstance(layer, QgsVectorLayer)
             and layer.isSpatial()
-            and layer.geometryType() == QgsWkbTypes.PolygonGeometry
+            and layer.geometryType() == QgsWkbTypes.LineGeometry
         ):
             return True
         return False
 
     def run(self) -> None:
-        """Explodes selected polygon feature to lines."""
+        """Explodes selected line features to points."""
         layer = iface.activeLayer()
         if not self.__check_valid_layer(layer):
-            LOGGER.warning(tr("Please select a polygon layer"), extra={"details": ""})
+            LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
             return
 
-        if len(layer.selectedFeatures()) != 1:
-            LOGGER.warning(tr("Please select a single feature"), extra={"details": ""})
-            return
-
-        line_params = {
+        point_params = {
             "INPUT": QgsProcessingFeatureSourceDefinition(
                 layer.id(),
                 selectedFeaturesOnly=True,
@@ -51,15 +43,20 @@ class ExplodeTool:
             ),
             "OUTPUT": "memory:",
         }
-        line_result = processing.run("native:polygonstolines", line_params)
-        line_layer = line_result["OUTPUT"]
 
-        explode_params = {"INPUT": line_layer, "OUTPUT": "memory:"}
-        explode_result = processing.run("native:explodelines", explode_params)
+        point_result = processing.run("native:explodelines", point_params)
+        point_layer = point_result["OUTPUT"]
 
-        explode_layer: QgsVectorLayer = explode_result["OUTPUT"]
-        explode_layer.setName(tr("Exploded polygon to lines"))
-        explode_layer.renderer().symbol().setWidth(2)
+        explode_params1 = {"INPUT": point_layer, "OUTPUT": "memory:"}
+        explode_result1 = processing.run("native:extractvertices", explode_params1)
+        explode_layer1 = explode_result1["OUTPUT"]
+
+        explode_params2 = {"INPUT": explode_layer1, "OUTPUT": "memory:"}
+        explode_result2 = processing.run(
+            "native:deleteduplicategeometries", explode_params2
+        )
+
+        explode_layer: QgsVectorLayer = explode_result2["OUTPUT"]
+        explode_layer.setName(tr("Exploded line as points"))
+        explode_layer.renderer().symbol().setSize(2)
         QgsProject.instance().addMapLayer(explode_layer)
-
-        self.split_tool.manual_activate()
