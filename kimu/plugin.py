@@ -8,14 +8,14 @@ from qgis.gui import QgisInterface
 from .core.explode_lines import ExplodeLines
 from .core.explode_lines2points import ExplodeLines2points
 from .core.explode_tool import ExplodeTool
-from .core.intersection_tool_lines import IntersectionLines
 from .core.intersection_tool_line_circle import IntersectionLineCircle
+from .core.intersection_tool_lines import IntersectionLines
 from .core.split_tool import SplitTool
 from .qgis_plugin_tools.tools.custom_logging import setup_logger, teardown_logger
 from .qgis_plugin_tools.tools.i18n import setup_translation, tr
 from .qgis_plugin_tools.tools.resources import plugin_name
-from .ui.split_tool_dockwidget import SplitToolDockWidget
 from .ui.line_circle_dockwidget import LineCircleDockWidget
+from .ui.split_tool_dockwidget import SplitToolDockWidget
 
 LOGGER = setup_logger(plugin_name())
 
@@ -33,7 +33,9 @@ class Plugin:
         self.explode_lines = ExplodeLines()
         self.explode_lines2points = ExplodeLines2points()
         self.intersection_tool_lines = IntersectionLines()
-        self.intersection_tool_line_circle = IntersectionLineCircle(self.iface, line_circle_dockwidget)
+        self.intersection_tool_line_circle = IntersectionLineCircle(
+            self.iface, line_circle_dockwidget
+        )
 
         # initialize locale
         locale, file_path = setup_translation()
@@ -193,8 +195,10 @@ class Plugin:
         self.intersection_tool_lines.run()
 
     def activate_intersection_tool_line_circle(self) -> None:
-        #self.intersection_tool_line_circle.run()
-        self.iface.addDockWidget(Qt.RightDockWidgetArea, self.intersection_tool_line_circle.ui)
+        # self.intersection_tool_line_circle.run()
+        self.iface.addDockWidget(
+            Qt.RightDockWidgetArea, self.intersection_tool_line_circle.ui
+        )
         self.iface.mapCanvas().setMapTool(self.intersection_tool_line_circle)
 
     def activate_split_tool(self) -> None:

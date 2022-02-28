@@ -1,5 +1,5 @@
-from typing import List
 import math
+from typing import List
 
 from qgis.core import (
     QgsFeature,
@@ -10,9 +10,9 @@ from qgis.core import (
     QgsVectorLayer,
     QgsWkbTypes,
 )
+from qgis.gui import QgisInterface, QgsMapToolEmitPoint, QgsSnapIndicator
 from qgis.PyQt.QtCore import QVariant
 from qgis.utils import iface
-from qgis.gui import QgisInterface, QgsMapToolEmitPoint, QgsSnapIndicator
 
 from ..qgis_plugin_tools.tools.custom_logging import setup_logger
 from ..qgis_plugin_tools.tools.i18n import tr
@@ -21,6 +21,7 @@ from ..ui.line_circle_dockwidget import LineCircleDockWidget
 from .select_tool import SelectTool
 
 LOGGER = setup_logger(plugin_name())
+
 
 class IntersectionLineCircle(SelectTool):
     def __init__(self, iface: QgisInterface, dock_widget: LineCircleDockWidget) -> None:
@@ -38,7 +39,7 @@ class IntersectionLineCircle(SelectTool):
             self.layer = layer
             self.setLayer(self.layer)
 
-    def canvasPressEvent(self, event: QgsMapToolEmitPoint) -> None:
+    def canvas_press_event(self, event: QgsMapToolEmitPoint) -> None:
         """Canvas click event for storing centroid point of the circle."""
         if self.iface.activeLayer() != self.layer:
             LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
@@ -62,7 +63,8 @@ class IntersectionLineCircle(SelectTool):
         self._intersect(geometry, centroid)
 
     def _intersect(self, geometry: QgsGeometry, centroid: List) -> QgsVectorLayer:
-        """Determine intersection point(s) of the selected line and implicitly determined circle."""
+        """Determine intersection point(s) of the selected
+        line and implicitly determined circle."""
         result_layer1 = QgsVectorLayer("Point", "temp", "memory")
         crs = self.layer.crs()
         result_layer1.setCrs(crs)
@@ -102,69 +104,106 @@ class IntersectionLineCircle(SelectTool):
         # y2 = line_coords[3]
 
         # Debug tests
-        #print(f"Value of line_coords[3] is {line_coords[3]}")
-        #aa = (line_coords[3])**2.0
-        #print(f"Value of aa is {aa}")
-        #print(f"Value of r is {r}")
+        # print(f"Value of line_coords[3] is {line_coords[3]}")
+        # aa = (line_coords[3])**2.0
+        # print(f"Value of aa is {aa}")
+        # print(f"Value of r is {r}")
 
         # Determine the intersection point with the help of analytical geometry
-        # 1. Determine the function of the straight line the selected line feature represents (each line can
-        # be seen as a limited representation of a function determining a line which has no start and end points).
-        # See e.g.
+        # 1. Determine the function of the straight line the selected
+        # line feature represents (each line can be seen as a limited
+        # representation of a function determining a line which has no
+        # start and end points). See e.g.
         # https://www.cuemath.com/geometry/two-point-form/
         # for more information.
-        # 2. Determine the function of the circle defined implicitly via the clicked centroid point and given radius.
+        # 2. Determine the function of the circle defined implicitly via
+        # the clicked centroid point and given radius.
         # See e.g. Standard Equation of a Circle section from
         # https://www.cuemath.com/geometry/equation-of-circle/
         # for more information.
-        # 3. Search for intersection point of these two functions by analytically modifying the resulting equation so
-        # that it is possible to solve x (and then y). Note that we end up with quadratic equation ->> we will end
-        # up with two possible solutions. The only exceptions are that the selected line does not intersect
-        # with the circle at all or that the line acts as a tangent for the circle.
-        a = (line_coords[3])**2.0 - 2.0 * line_coords[1] * line_coords[3] + (line_coords[1])**2.0 \
-            + (line_coords[2])**2.0 - 2.0 * line_coords[0] * line_coords[2] + (line_coords[0])**2.0
-        #print(f"Value of a is {a}")
-        b = -2.0 * (line_coords[3])**2.0 * line_coords[0] + 2.0 * line_coords[1] * line_coords[3] * line_coords[2] \
-            + 2.0 * line_coords[1] * line_coords[3] * line_coords[0] - 2.0 * (line_coords[1])**2.0 * line_coords[2] \
-            - 2.0 * centroid[0] * (line_coords[2])**2.0 - 2.0 * centroid[0] * (line_coords[0])**2.0 \
-            + 4.0 * centroid[0] * line_coords[0] * line_coords[2] - 2.0*line_coords[2]*centroid[1]*line_coords[3] \
-            + 2.0 * centroid[1] * line_coords[1] * line_coords[2] + 2.0*centroid[1]*line_coords[3]*line_coords[0] \
+        # 3. Search for intersection point of these two functions by
+        # analytically modifying the resulting equation so that it is
+        # possible to solve x (and then y). Note that we end up with
+        # quadratic equation ->> we will end up with two possible
+        # solutions. The only exceptions are that the selected line
+        # does not intersect with the circle at all or that the line
+        # acts as a tangent for the circle.
+        a = (
+            (line_coords[3]) ** 2.0
+            - 2.0 * line_coords[1] * line_coords[3]
+            + (line_coords[1]) ** 2.0
+            + (line_coords[2]) ** 2.0
+            - 2.0 * line_coords[0] * line_coords[2]
+            + (line_coords[0]) ** 2.0
+        )
+        # print(f"Value of a is {a}")
+        b = (
+            -2.0 * (line_coords[3]) ** 2.0 * line_coords[0]
+            + 2.0 * line_coords[1] * line_coords[3] * line_coords[2]
+            + 2.0 * line_coords[1] * line_coords[3] * line_coords[0]
+            - 2.0 * (line_coords[1]) ** 2.0 * line_coords[2]
+            - 2.0 * centroid[0] * (line_coords[2]) ** 2.0
+            - 2.0 * centroid[0] * (line_coords[0]) ** 2.0
+            + 4.0 * centroid[0] * line_coords[0] * line_coords[2]
+            - 2.0 * line_coords[2] * centroid[1] * line_coords[3]
+            + 2.0 * centroid[1] * line_coords[1] * line_coords[2]
+            + 2.0 * centroid[1] * line_coords[3] * line_coords[0]
             - 2.0 * centroid[1] * line_coords[1] * line_coords[0]
-        #print(f"Value of b is {b}")
-        c = (line_coords[3])**2.0 * (line_coords[0])**2.0 \
-            - 2.0 * line_coords[0] * line_coords[1] * line_coords[2] * line_coords[3] \
-            + (line_coords[1])**2.0 * (line_coords[2])**2.0 + (centroid[0])**2.0 * (line_coords[2])**2.0 \
-            - 2.0 * (centroid[0])**2.0 * line_coords[0] * line_coords[2] + (centroid[0])**2.0 * (line_coords[0])**2.0 \
-            + 2.0 * line_coords[2] * centroid[1] * line_coords[3] * line_coords[0] \
-            - 2.0 * (line_coords[2])**2.0 * centroid[1] * line_coords[1] \
-            - 2.0 * (line_coords[0])**2.0 * centroid[1] * line_coords[3] \
-            + 2.0 * centroid[1] * line_coords[1] * line_coords[2] * line_coords[0] \
-            + (line_coords[2])**2.0 * (centroid[1])**2.0 - (line_coords[2])**2.0 * r**2.0 \
-            - 2.0*line_coords[0]*line_coords[2] * (centroid[1])**2.0 + 2.0 * line_coords[0] * line_coords[2] * r**2.0 \
-            + (line_coords[0])**2.0 * (centroid[1])**2.0 - (line_coords[0])**2.0 * r**2.0
-        #print(f"Value of c is {c}")
+        )
+        # print(f"Value of b is {b}")
+        c = (
+            (line_coords[3]) ** 2.0 * (line_coords[0]) ** 2.0
+            - 2.0 * line_coords[0] * line_coords[1] * line_coords[2] * line_coords[3]
+            + (line_coords[1]) ** 2.0 * (line_coords[2]) ** 2.0
+            + (centroid[0]) ** 2.0 * (line_coords[2]) ** 2.0
+            - 2.0 * (centroid[0]) ** 2.0 * line_coords[0] * line_coords[2]
+            + (centroid[0]) ** 2.0 * (line_coords[0]) ** 2.0
+            + 2.0 * line_coords[2] * centroid[1] * line_coords[3] * line_coords[0]
+            - 2.0 * (line_coords[2]) ** 2.0 * centroid[1] * line_coords[1]
+            - 2.0 * (line_coords[0]) ** 2.0 * centroid[1] * line_coords[3]
+            + 2.0 * centroid[1] * line_coords[1] * line_coords[2] * line_coords[0]
+            + (line_coords[2]) ** 2.0 * (centroid[1]) ** 2.0
+            - (line_coords[2]) ** 2.0 * r ** 2.0
+            - 2.0 * line_coords[0] * line_coords[2] * (centroid[1]) ** 2.0
+            + 2.0 * line_coords[0] * line_coords[2] * r ** 2.0
+            + (line_coords[0]) ** 2.0 * (centroid[1]) ** 2.0
+            - (line_coords[0]) ** 2.0 * r ** 2.0
+        )
+        # print(f"Value of c is {c}")
 
-        # Check that the selected line feature and indirectly defined circle intersect
-        # To do: Complains that there is no intersection point of given radius if radius is small (e.g. 10m)?
-        # The limit value seems to change according to coordinates of centroid point..
-        sqrt_in = b**2.0 - 4.0 * a * c
+        # Check that the selected line feature and indirectly
+        # defined circle intersect.
+        # To do: Complains that there is no intersection point
+        # of given radius if radius is small (e.g. 10m)?
+        # The limit value seems to change according to coordinates
+        # of centroid point..
+        sqrt_in = b ** 2.0 - 4.0 * a * c
         print(f"Value of sqrt_in is {sqrt_in}")
         if sqrt_in < 0.0 or a == 0.0:
             LOGGER.warning(
-                tr("There is no intersection point(s)!"), extra={"details": ""},
+                tr("There is no intersection point(s)!"),
+                extra={"details": ""},
             )
             return
 
         # Computing the coordinates for intersection points
         x_sol1 = (-b + math.sqrt(sqrt_in)) / (2.0 * a)
 
-        y_sol1 = (x_sol1 * line_coords[3] - line_coords[0] * line_coords[3] - x_sol1 * line_coords[1] \
-                   + line_coords[2] * line_coords[1]) / (line_coords[2] - line_coords[0])
+        y_sol1 = (
+            x_sol1 * line_coords[3]
+            - line_coords[0] * line_coords[3]
+            - x_sol1 * line_coords[1]
+            + line_coords[2] * line_coords[1]
+        ) / (line_coords[2] - line_coords[0])
 
         x_sol2 = (-b - math.sqrt(sqrt_in)) / (2.0 * a)
 
-        y_sol2 = (x_sol2 * line_coords[3] - line_coords[0] * line_coords[3] - x_sol2 * line_coords[1] \
-                   + line_coords[2] * line_coords[1]) / (line_coords[2] - line_coords[0])
+        y_sol2 = (
+            x_sol2 * line_coords[3]
+            - line_coords[0] * line_coords[3]
+            - x_sol2 * line_coords[1]
+            + line_coords[2] * line_coords[1]
+        ) / (line_coords[2] - line_coords[0])
 
         # Check that the result point lies in the map canvas extent
         extent = iface.mapCanvas().extent()
@@ -194,7 +233,8 @@ class IntersectionLineCircle(SelectTool):
             return
 
         # Check that the line genuinely intersects with a circle.
-        # In case the line only touches the circle, only one result layer gets generated since x_sol1 = x_sol2
+        # In case the line only touches the circle, only one result
+        # layer gets generated since x_sol1 = x_sol2
         if sqrt_in == 0.0:
             intersection_point = QgsPointXY(x_sol1, y_sol1)
             f1 = QgsFeature()
