@@ -105,19 +105,32 @@ class IntersectionLineCircle(SelectTool):
         #print(f"Value of line_coords[3] is {line_coords[3]}")
         #aa = (line_coords[3])**2.0
         #print(f"Value of aa is {aa}")
-        print(f"Value of r is {r}")
+        #print(f"Value of r is {r}")
 
-        # Determine the intersection point
+        # Determine the intersection point with the help of analytical geometry
+        # 1. Determine the function of the straight line the selected line feature represents (each line can
+        # be seen as a limited representation of a function determining a line which has no start and end points).
+        # See e.g.
+        # https://www.cuemath.com/geometry/two-point-form/
+        # for more information.
+        # 2. Determine the function of the circle defined implicitly via the clicked centroid point and given radius.
+        # See e.g. Standard Equation of a Circle section from
+        # https://www.cuemath.com/geometry/equation-of-circle/
+        # for more information.
+        # 3. Search for intersection point of these two functions by analytically modifying the resulting equation so
+        # that it is possible to solve x (and then y). Note that we end up with quadratic equation ->> we will end
+        # up with two possible solutions. The only exceptions are that the selected line does not intersect
+        # with the circle at all or that the line acts as a tangent for the circle.
         a = (line_coords[3])**2.0 - 2.0 * line_coords[1] * line_coords[3] + (line_coords[1])**2.0 \
             + (line_coords[2])**2.0 - 2.0 * line_coords[0] * line_coords[2] + (line_coords[0])**2.0
-        print(f"Value of a is {a}")
+        #print(f"Value of a is {a}")
         b = -2.0 * (line_coords[3])**2.0 * line_coords[0] + 2.0 * line_coords[1] * line_coords[3] * line_coords[2] \
             + 2.0 * line_coords[1] * line_coords[3] * line_coords[0] - 2.0 * (line_coords[1])**2.0 * line_coords[2] \
             - 2.0 * centroid[0] * (line_coords[2])**2.0 - 2.0 * centroid[0] * (line_coords[0])**2.0 \
             + 4.0 * centroid[0] * line_coords[0] * line_coords[2] - 2.0*line_coords[2]*centroid[1]*line_coords[3] \
             + 2.0 * centroid[1] * line_coords[1] * line_coords[2] + 2.0*centroid[1]*line_coords[3]*line_coords[0] \
             - 2.0 * centroid[1] * line_coords[1] * line_coords[0]
-        print(f"Value of b is {b}")
+        #print(f"Value of b is {b}")
         c = (line_coords[3])**2.0 * (line_coords[0])**2.0 \
             - 2.0 * line_coords[0] * line_coords[1] * line_coords[2] * line_coords[3] \
             + (line_coords[1])**2.0 * (line_coords[2])**2.0 + (centroid[0])**2.0 * (line_coords[2])**2.0 \
@@ -129,10 +142,10 @@ class IntersectionLineCircle(SelectTool):
             + (line_coords[2])**2.0 * (centroid[1])**2.0 - (line_coords[2])**2.0 * r**2.0 \
             - 2.0*line_coords[0]*line_coords[2] * (centroid[1])**2.0 + 2.0 * line_coords[0] * line_coords[2] * r**2.0 \
             + (line_coords[0])**2.0 * (centroid[1])**2.0 - (line_coords[0])**2.0 * r**2.0
-        print(f"Value of c is {c}")
+        #print(f"Value of c is {c}")
 
         # Check that the selected line feature and indirectly defined circle intersect
-        # to do: Complains that there is no intersection point of given radius if radius is small (e.g. 10m)?
+        # To do: Complains that there is no intersection point of given radius if radius is small (e.g. 10m)?
         # The limit value seems to change according to coordinates of centroid point..
         sqrt_in = b**2.0 - 4.0 * a * c
         print(f"Value of sqrt_in is {sqrt_in}")
