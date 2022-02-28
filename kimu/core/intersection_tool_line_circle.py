@@ -1,10 +1,8 @@
 from typing import List
+import math
 
-from PyQt5.QtCore import Qt
-from qgis import processing
 from qgis.core import (
     QgsFeature,
-    QgsFeatureRequest,
     QgsField,
     QgsGeometry,
     QgsPointXY,
@@ -14,27 +12,21 @@ from qgis.core import (
 )
 from qgis.PyQt.QtCore import QVariant
 from qgis.utils import iface
-from qgis.gui import QgisInterface, QgsMapMouseEvent, QgsMapToolIdentify, QgsMapToolEmitPoint
+from qgis.gui import QgisInterface, QgsMapToolEmitPoint, QgsSnapIndicator
 
 from ..qgis_plugin_tools.tools.custom_logging import setup_logger
 from ..qgis_plugin_tools.tools.i18n import tr
 from ..qgis_plugin_tools.tools.resources import plugin_name
 from ..ui.line_circle_dockwidget import LineCircleDockWidget
 from .select_tool import SelectTool
-from .coordinates_tool import SaveSnappedPoint
 
 LOGGER = setup_logger(plugin_name())
 
-class IntersectionLineCircle(SelectTool, SaveSnappedPoint):
+class IntersectionLineCircle(SelectTool):
     def __init__(self, iface: QgisInterface, dock_widget: LineCircleDockWidget) -> None:
         super().__init__(iface)
         self.ui: LineCircleDockWidget = dock_widget
-
-    def manual_activate(self) -> None:
-        """Manually activate tool."""
-        self.iface.mapCanvas().setMapTool(self)
-        self.action().setChecked(True)
-        self.iface.addDockWidget(Qt.RightDockWidgetArea, self.ui)
+        self.i = QgsSnapIndicator(self.iface.mapCanvas())
 
     def active_changed(self, layer: QgsVectorLayer) -> None:
         """Triggered when active layer changes."""
@@ -46,107 +38,182 @@ class IntersectionLineCircle(SelectTool, SaveSnappedPoint):
             self.layer = layer
             self.setLayer(self.layer)
 
-    def canvasPressEvent(self, event: QgsMapMouseEvent) -> None:  # noqa: N802
-        """First canvas click event."""
-
+    def canvasPressEvent(self, event: QgsMapToolEmitPoint) -> None:
+        """Canvas click event for storing centroid point of the circle."""
         if self.iface.activeLayer() != self.layer:
             LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
             return
 
-        geometry = self._identify_and_extract_single_geometry(event)
-        # No geometry identified
-        if geometry.isEmpty():
+        if len(self.iface.activeLayer().selectedFeatures()) != 1:
+            LOGGER.warning(tr("Please select only one line"), extra={"details": ""})
             return
+        else:
+            geometry = self.iface.activeLayer().selectedFeatures()[0].geometry()
 
-        intersection_layer = self._intersect(geometry)
+        m = self.iface.mapCanvas().snappingUtils().snapToMap(event.pos())
+        self.i.setMatch(m)
 
-        QgsProject.instance().addMapLayer(intersection_layer)
+        # Coordinates of the point to be used as a circle centroid
+        x_coord = event.pos().x()
+        y_coord = event.pos().y()
+        point = self.canvas.getCoordinateTransform().toMapCoordinates(x_coord, y_coord)
+        centroid = [point[0], point[1]]
 
-    def _identify_and_extract_single_geometry(
-        self, event: QgsMapMouseEvent
-    ) -> QgsGeometry:
-        """Identifies clicked feature and extracts its geometry.
-        Returns empty geometry if nr. of identified features != 1."""
-        found_features: List[QgsMapToolIdentify.IdentifyResult] = self.identify(
-            event.x(), event.y(), [self.layer], QgsMapToolIdentify.ActiveLayer
-        )
-        if len(found_features) != 1:
-            LOGGER.info(
-                tr("Please select one line"), extra={"details": "", "duration": 1}
-            )
-            return QgsGeometry()
-        self.layer.selectByIds(
-            [f.mFeature.id() for f in found_features], QgsVectorLayer.SetSelection
-        )
-        geometry: QgsGeometry = found_features[0].mFeature.geometry()
-        return geometry
+        self._intersect(geometry, centroid)
 
-    def _intersect(self, geometry: QgsGeometry) -> QgsVectorLayer:
-
-        result_layer = QgsVectorLayer("Point", "temp", "memory")
+    def _intersect(self, geometry: QgsGeometry, centroid: List) -> QgsVectorLayer:
+        """Determine intersection point(s) of the selected line and implicitly determined circle."""
+        result_layer1 = QgsVectorLayer("Point", "temp", "memory")
         crs = self.layer.crs()
-        result_layer.setCrs(crs)
-        result_layer_dataprovider = result_layer.dataProvider()
-        result_layer_dataprovider.addAttributes(
+        result_layer1.setCrs(crs)
+        result_layer1_dataprovider = result_layer1.dataProvider()
+        result_layer1_dataprovider.addAttributes(
             [QgsField("xcoord", QVariant.Double), QgsField("ycoord", QVariant.Double)]
         )
-        result_layer.updateFields()
+        result_layer1.updateFields()
+
+        result_layer2 = QgsVectorLayer("Point", "temp", "memory")
+        crs = self.layer.crs()
+        result_layer2.setCrs(crs)
+        result_layer2_dataprovider = result_layer2.dataProvider()
+        result_layer2_dataprovider.addAttributes(
+            [QgsField("xcoord", QVariant.Double), QgsField("ycoord", QVariant.Double)]
+        )
+        result_layer2.updateFields()
 
         line_feat = geometry.asPolyline()
         start_point = QgsPointXY(line_feat[0])
         end_point = QgsPointXY(line_feat[-1])
-        viiva = [start_point.x(), start_point.y(), end_point.x(), end_point.y()]
+        line_coords = [start_point.x(), start_point.y(), end_point.x(), end_point.y()]
 
-        if len(viiva)==0:
-            LOGGER.warning(tr("Vika taalla"), extra={"details": ""})
+        # In crs units (meters for EPSG: 3067)
+        r = self.ui.get_radius()
+
+        # DUMMY TEST
+        # x_sol1 = float(centroid[0]) + r * 100.0
+        # y_sol1 = float(line_coords[3]) + r * 100.0
+        # x_sol2 = float(centroid[0]) - r * 100.0
+        # y_sol2 = float(line_coords[3]) - r * 100.0
+
+        # Which coordinate value is stored at which index of the list
+        # x1 = line_coords[0]
+        # y1 = line_coords[1]
+        # x2 = line_coords[2]
+        # y2 = line_coords[3]
+
+        # Debug tests
+        #print(f"Value of line_coords[3] is {line_coords[3]}")
+        #aa = (line_coords[3])**2.0
+        #print(f"Value of aa is {aa}")
+        print(f"Value of r is {r}")
+
+        # Determine the intersection point
+        a = (line_coords[3])**2.0 - 2.0 * line_coords[1] * line_coords[3] + (line_coords[1])**2.0 \
+            + (line_coords[2])**2.0 - 2.0 * line_coords[0] * line_coords[2] + (line_coords[0])**2.0
+        print(f"Value of a is {a}")
+        b = -2.0 * (line_coords[3])**2.0 * line_coords[0] + 2.0 * line_coords[1] * line_coords[3] * line_coords[2] \
+            + 2.0 * line_coords[1] * line_coords[3] * line_coords[0] - 2.0 * (line_coords[1])**2.0 * line_coords[2] \
+            - 2.0 * centroid[0] * (line_coords[2])**2.0 - 2.0 * centroid[0] * (line_coords[0])**2.0 \
+            + 4.0 * centroid[0] * line_coords[0] * line_coords[2] - 2.0*line_coords[2]*centroid[1]*line_coords[3] \
+            + 2.0 * centroid[1] * line_coords[1] * line_coords[2] + 2.0*centroid[1]*line_coords[3]*line_coords[0] \
+            - 2.0 * centroid[1] * line_coords[1] * line_coords[0]
+        print(f"Value of b is {b}")
+        c = (line_coords[3])**2.0 * (line_coords[0])**2.0 \
+            - 2.0 * line_coords[0] * line_coords[1] * line_coords[2] * line_coords[3] \
+            + (line_coords[1])**2.0 * (line_coords[2])**2.0 + (centroid[0])**2.0 * (line_coords[2])**2.0 \
+            - 2.0 * (centroid[0])**2.0 * line_coords[0] * line_coords[2] + (centroid[0])**2.0 * (line_coords[0])**2.0 \
+            + 2.0 * line_coords[2] * centroid[1] * line_coords[3] * line_coords[0] \
+            - 2.0 * (line_coords[2])**2.0 * centroid[1] * line_coords[1] \
+            - 2.0 * (line_coords[0])**2.0 * centroid[1] * line_coords[3] \
+            + 2.0 * centroid[1] * line_coords[1] * line_coords[2] * line_coords[0] \
+            + (line_coords[2])**2.0 * (centroid[1])**2.0 - (line_coords[2])**2.0 * r**2.0 \
+            - 2.0*line_coords[0]*line_coords[2] * (centroid[1])**2.0 + 2.0 * line_coords[0] * line_coords[2] * r**2.0 \
+            + (line_coords[0])**2.0 * (centroid[1])**2.0 - (line_coords[0])**2.0 * r**2.0
+        print(f"Value of c is {c}")
+
+        # Check that the selected line feature and indirectly defined circle intersect
+        # to do: Complains that there is no intersection point of given radius if radius is small (e.g. 10m)?
+        # The limit value seems to change according to coordinates of centroid point..
+        sqrt_in = b**2.0 - 4.0 * a * c
+        print(f"Value of sqrt_in is {sqrt_in}")
+        if sqrt_in < 0.0 or a == 0.0:
+            LOGGER.warning(
+                tr("There is no intersection point(s)!"), extra={"details": ""},
+            )
             return
 
-        #KP COORD!
+        # Computing the coordinates for intersection points
+        x_sol1 = (-b + math.sqrt(sqrt_in)) / (2.0 * a)
 
-        # a reference to our map canvas
-        #canvas = iface.mapCanvas()
-        # this QGIS tool emits as QgsPoint after each click on the map canvas
-        #pointTool = QgsMapToolEmitPoint(canvas)
-        #lii = [pointTool.pos.x(), pointTool.pos.y()]
+        y_sol1 = (x_sol1 * line_coords[3] - line_coords[0] * line_coords[3] - x_sol1 * line_coords[1] \
+                   + line_coords[2] * line_coords[1]) / (line_coords[2] - line_coords[0])
 
-        #if len(kpcoord)==0:
-            #LOGGER.warning(tr("Vika taalla2"), extra={"details": ""})
-            #return
+        x_sol2 = (-b - math.sqrt(sqrt_in)) / (2.0 * a)
 
-        # Coordinates of the intersection point user chooses
-        #x = float(kpcoord[0]) + float(viiva[0])
-        #y = float(kpcoord[1]) + float(viiva[3])
-
-        #kpoint = self.toLayerCoordinates(self.layer, event.pos() )
-
-        radius = self.ui.get_radius()
-        # Coordinates of the intersection point user chooses
-        #x = float(viiva[0]) + radius * 100.0 + lii[0]
-        x = float(viiva[0]) + radius * 100.0
-        y = float(viiva[3]) + radius * 100.0
+        y_sol2 = (x_sol2 * line_coords[3] - line_coords[0] * line_coords[3] - x_sol2 * line_coords[1] \
+                   + line_coords[2] * line_coords[1]) / (line_coords[2] - line_coords[0])
 
         # Check that the result point lies in the map canvas extent
         extent = iface.mapCanvas().extent()
 
         if (
-            x < extent.xMinimum()
-            or x > extent.xMaximum()
-            or y < extent.yMinimum()
-            or y > extent.yMaximum()
+            x_sol1 < extent.xMinimum()
+            or x_sol1 > extent.xMaximum()
+            or y_sol1 < extent.yMinimum()
+            or y_sol1 > extent.yMaximum()
         ):
             LOGGER.warning(
-                tr("Intersection point(s) lie(s) outside of the map canvas!"),
+                tr("Intersection point 1 lies outside of the map canvas!"),
                 extra={"details": ""},
             )
             return
 
-        intersection_point = QgsPointXY(x, y)
-        f = QgsFeature()
-        f.setGeometry(QgsGeometry.fromPointXY(intersection_point))
-        f.setAttributes([round(x, 2), round(y, 2)])
-        result_layer_dataprovider.addFeature(f)
-        result_layer.updateExtents()
+        if (
+            x_sol2 < extent.xMinimum()
+            or x_sol2 > extent.xMaximum()
+            or y_sol2 < extent.yMinimum()
+            or y_sol2 > extent.yMaximum()
+        ):
+            LOGGER.warning(
+                tr("Intersection point 2 lies outside of the map canvas!"),
+                extra={"details": ""},
+            )
+            return
 
-        result_layer.setName(tr("Intersection points"))
-        result_layer.renderer().symbol().setSize(2)
-        return result_layer
+        # Check that the line genuinely intersects with a circle.
+        # In case the line only touches the circle, only one result layer gets generated since x_sol1 = x_sol2
+        if sqrt_in == 0.0:
+            intersection_point = QgsPointXY(x_sol1, y_sol1)
+            f1 = QgsFeature()
+            f1.setGeometry(QgsGeometry.fromPointXY(intersection_point))
+            f1.setAttributes([round(x_sol1, 2), round(y_sol1, 2)])
+            result_layer1_dataprovider.addFeature(f1)
+            result_layer1.updateExtents()
+
+            result_layer1.setName(tr("The only intersection point"))
+            result_layer1.renderer().symbol().setSize(2)
+
+            QgsProject.instance().addMapLayer(result_layer1)
+        else:
+            intersection_point1 = QgsPointXY(x_sol1, y_sol1)
+            f1 = QgsFeature()
+            f1.setGeometry(QgsGeometry.fromPointXY(intersection_point1))
+            f1.setAttributes([round(x_sol1, 2), round(y_sol1, 2)])
+            result_layer1_dataprovider.addFeature(f1)
+            result_layer1.updateExtents()
+
+            result_layer1.setName(tr("Intersection point 1"))
+            result_layer1.renderer().symbol().setSize(2)
+
+            intersection_point2 = QgsPointXY(x_sol2, y_sol2)
+            f2 = QgsFeature()
+            f2.setGeometry(QgsGeometry.fromPointXY(intersection_point2))
+            f2.setAttributes([round(x_sol2, 2), round(y_sol2, 2)])
+            result_layer2_dataprovider.addFeature(f2)
+            result_layer2.updateExtents()
+
+            result_layer2.setName(tr("Intersection point 2"))
+            result_layer2.renderer().symbol().setSize(2)
+
+            QgsProject.instance().addMapLayer(result_layer1)
+            QgsProject.instance().addMapLayer(result_layer2)
