@@ -25,16 +25,12 @@ LOGGER = setup_logger(plugin_name())
 
 
 class IntersectionLineCircle(SelectTool):
-    def __init__(
-        self, iface: QgisInterface, dock_widget: LineCircleDockWidget
-    ) -> None:
+    def __init__(self, iface: QgisInterface, dock_widget: LineCircleDockWidget) -> None:
         super().__init__(iface)
         self.ui: LineCircleDockWidget = dock_widget
         self.i = QgsSnapIndicator(self.iface.mapCanvas())
 
-    def active_changed(
-        self, layer: QgsVectorLayer
-    ) -> None:
+    def active_changed(self, layer: QgsVectorLayer) -> None:
         """Triggered when active layer changes."""
         if (
             isinstance(layer, QgsVectorLayer)
@@ -44,19 +40,19 @@ class IntersectionLineCircle(SelectTool):
             self.layer = layer
             self.setLayer(self.layer)
 
+    # fmt: off
     def canvasPressEvent(
         self, event: QgsMapToolEmitPoint
-    ) -> None:  # fmt: skip, noqa: N802
+    ) -> None:  # noqa: N802
+        # fmt: on
         """Canvas click event for storing centroid
         point of the circle."""
         if self.iface.activeLayer() != self.layer:
-            LOGGER.warning(tr("Please select a line layer"),
-                           extra={"details": ""})
+            LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
             return
 
         if len(self.iface.activeLayer().selectedFeatures()) != 1:
-            LOGGER.warning(tr("Please select only one line"),
-                           extra={"details": ""})
+            LOGGER.warning(tr("Please select only one line"), extra={"details": ""})
             return
         else:
             geometry = self.iface.activeLayer().selectedFeatures()[0].geometry()
@@ -73,9 +69,7 @@ class IntersectionLineCircle(SelectTool):
         # Call for function determining the intersection point
         self._intersect(geometry, centroid)
 
-    def _parameters(
-        self, line_coords: List, centroid: List
-    ) -> List:
+    def _parameters(self, line_coords: List, centroid: List) -> List:
         """Calculate values for a, b and c parameters"""
         # Radius is given in crs units (meters for EPSG: 3067)
         r = decimal.Decimal(self.ui.get_radius())
@@ -257,9 +251,7 @@ class IntersectionLineCircle(SelectTool):
         QgsProject.instance().addMapLayer(result_layer1)
         QgsProject.instance().addMapLayer(result_layer2)
 
-    def _intersect(
-        self, geometry: QgsGeometry, centroid: List
-    ) -> QgsVectorLayer:
+    def _intersect(self, geometry: QgsGeometry, centroid: List) -> QgsVectorLayer:
         """Determine the intersection point(s) of the selected
         line and implicitly determined (centroid+radius) circle."""
         result_layer1 = QgsVectorLayer("Point", "temp", "memory")
@@ -299,9 +291,9 @@ class IntersectionLineCircle(SelectTool):
             return
 
         # Computing the coordinates for the intersection point(s)
-        x_sol1 = (-parameters[1] + decimal.Decimal(math.sqrt(
-            sqrt_in
-        ))) / (decimal.Decimal("2.0") * parameters[0])
+        x_sol1 = (-parameters[1] + decimal.Decimal(math.sqrt(sqrt_in))) / (
+            decimal.Decimal("2.0") * parameters[0]
+        )
 
         y_sol1 = float(
             (
@@ -315,9 +307,9 @@ class IntersectionLineCircle(SelectTool):
 
         x_sol1 = float(x_sol1)
 
-        x_sol2 = (-parameters[1] - decimal.Decimal(math.sqrt(
-            sqrt_in
-        ))) / (decimal.Decimal("2.0") * parameters[0])
+        x_sol2 = (-parameters[1] - decimal.Decimal(math.sqrt(sqrt_in))) / (
+            decimal.Decimal("2.0") * parameters[0]
+        )
 
         y_sol2 = float(
             (
