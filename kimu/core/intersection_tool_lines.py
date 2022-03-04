@@ -107,16 +107,28 @@ class IntersectionLines:
         # by analytically modifying the resulting equation so
         # that it is possible to solve x (and then y).
         x = float(
-            (line_points[0]
-            * ((line_points[3] - line_points[1]) / (line_points[2] - line_points[0]))
-            - line_points[4]
-            * ((line_points[7] - line_points[5]) / (line_points[6] - line_points[4]))
-            + line_points[5]
-            - line_points[1]
-        ) / (
-            ((line_points[3] - line_points[1]) / (line_points[2] - line_points[0]))
-            - ((line_points[7] - line_points[5]) / (line_points[6] - line_points[4]))
-        ))
+            (
+                line_points[0]
+                * (
+                    (line_points[3] - line_points[1])
+                    / (line_points[2] - line_points[0])
+                )
+                - line_points[4]
+                * (
+                    (line_points[7] - line_points[5])
+                    / (line_points[6] - line_points[4])
+                )
+                + line_points[5]
+                - line_points[1]
+            )
+            / (
+                ((line_points[3] - line_points[1]) / (line_points[2] - line_points[0]))
+                - (
+                    (line_points[7] - line_points[5])
+                    / (line_points[6] - line_points[4])
+                )
+            )
+        )
         y = float(
             ((line_points[3] - line_points[1]) / (line_points[2] - line_points[0]))
             * (decimal.Decimal(x) - line_points[0])
