@@ -14,5 +14,5 @@ class LineCircleDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.iface = iface
 
     def get_radius(self) -> float:
-        self.doublespinbox_sade: QgsDoubleSpinBox
-        return self.doublespinbox_sade.value()
+        self.doublespinbox_radius: QgsDoubleSpinBox
+        return self.doublespinbox_radius.value()
