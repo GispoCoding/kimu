@@ -41,7 +41,7 @@ class IntersectionLineCircle(SelectTool):
             self.setLayer(self.layer)
 
     # fmt: off
-    def canvasPressEvent( # noqa: N802
+    def canvasPressEvent(  # noqa: N802
         self, event: QgsMapToolEmitPoint
     ) -> None:
         # fmt: on
