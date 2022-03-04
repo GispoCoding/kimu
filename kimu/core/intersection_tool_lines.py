@@ -1,3 +1,5 @@
+import decimal
+
 from qgis import processing
 from qgis.core import (
     QgsFeature,
@@ -75,7 +77,12 @@ class IntersectionLines:
             start_point = QgsPointXY(line_feat[0])
             end_point = QgsPointXY(line_feat[-1])
             line_points.extend(
-                [start_point.x(), start_point.y(), end_point.x(), end_point.y()]
+                [
+                    decimal.Decimal(start_point.x()),
+                    decimal.Decimal(start_point.y()),
+                    decimal.Decimal(end_point.x()),
+                    decimal.Decimal(end_point.y()),
+                ]
             )
 
         # Check that the selected line features are not parallel by
@@ -99,20 +106,34 @@ class IntersectionLines:
         # 2. Search for intersection point of these two functions
         # by analytically modifying the resulting equation so
         # that it is possible to solve x (and then y).
-        x = (
-            line_points[0]
-            * ((line_points[3] - line_points[1]) / (line_points[2] - line_points[0]))
-            - line_points[4]
-            * ((line_points[7] - line_points[5]) / (line_points[6] - line_points[4]))
-            + line_points[5]
-            - line_points[1]
-        ) / (
-            ((line_points[3] - line_points[1]) / (line_points[2] - line_points[0]))
-            - ((line_points[7] - line_points[5]) / (line_points[6] - line_points[4]))
+        x = float(
+            (
+                line_points[0]
+                * (
+                    (line_points[3] - line_points[1])
+                    / (line_points[2] - line_points[0])
+                )
+                - line_points[4]
+                * (
+                    (line_points[7] - line_points[5])
+                    / (line_points[6] - line_points[4])
+                )
+                + line_points[5]
+                - line_points[1]
+            )
+            / (
+                ((line_points[3] - line_points[1]) / (line_points[2] - line_points[0]))
+                - (
+                    (line_points[7] - line_points[5])
+                    / (line_points[6] - line_points[4])
+                )
+            )
         )
-        y = ((line_points[3] - line_points[1]) / (line_points[2] - line_points[0])) * (
-            x - line_points[0]
-        ) + line_points[1]
+        y = float(
+            ((line_points[3] - line_points[1]) / (line_points[2] - line_points[0]))
+            * (decimal.Decimal(x) - line_points[0])
+            + line_points[1]
+        )
 
         # Check that the result point lies in the map canvas extent
         extent = iface.mapCanvas().extent()
