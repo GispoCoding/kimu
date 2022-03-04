@@ -40,7 +40,9 @@ class IntersectionLineCircle(SelectTool):
             self.layer = layer
             self.setLayer(self.layer)
 
-    def canvasPressEvent(self, event: QgsMapToolEmitPoint) -> None:  # fmt: skip noqa: N802
+    def canvasPressEvent(
+        self, event: QgsMapToolEmitPoint
+    ) -> None:  # noqa: N802
         """Canvas click event for storing centroid point of the circle."""
         if self.iface.activeLayer() != self.layer:
             LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
