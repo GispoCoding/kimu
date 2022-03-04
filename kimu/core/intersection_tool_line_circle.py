@@ -25,12 +25,16 @@ LOGGER = setup_logger(plugin_name())
 
 
 class IntersectionLineCircle(SelectTool):
-    def __init__(self, iface: QgisInterface, dock_widget: LineCircleDockWidget) -> None:
+    def __init__(
+        self, iface: QgisInterface, dock_widget: LineCircleDockWidget
+    ) -> None:
         super().__init__(iface)
         self.ui: LineCircleDockWidget = dock_widget
         self.i = QgsSnapIndicator(self.iface.mapCanvas())
 
-    def active_changed(self, layer: QgsVectorLayer) -> None:
+    def active_changed(
+        self, layer: QgsVectorLayer
+    ) -> None:
         """Triggered when active layer changes."""
         if (
             isinstance(layer, QgsVectorLayer)
@@ -40,29 +44,40 @@ class IntersectionLineCircle(SelectTool):
             self.layer = layer
             self.setLayer(self.layer)
 
-    def canvasPressEvent(self, event: QgsMapToolEmitPoint) -> None:  # noqa: N802 # fmt: skip
-        """Canvas click event for storing centroid point of the circle."""
+    def canvasPressEvent(
+        self, event: QgsMapToolEmitPoint
+    ) -> None:  # fmt: skip, noqa: N802
+        """Canvas click event for storing centroid
+        point of the circle."""
         if self.iface.activeLayer() != self.layer:
-            LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
+            LOGGER.warning(tr("Please select a line layer"),
+                           extra={"details": ""})
             return
 
         if len(self.iface.activeLayer().selectedFeatures()) != 1:
-            LOGGER.warning(tr("Please select only one line"), extra={"details": ""})
+            LOGGER.warning(tr("Please select only one line"),
+                           extra={"details": ""})
             return
         else:
             geometry = self.iface.activeLayer().selectedFeatures()[0].geometry()
 
+        # Snap the click to the closest point feature available.
+        # Note that your QGIS's snapping options have on effect
+        # on which objects / vertexes the tool will snap
         m = self.iface.mapCanvas().snappingUtils().snapToMap(event.pos())
         self.i.setMatch(m)
 
         # Coordinates of the point to be used as a circle centroid
         centroid = [decimal.Decimal(m.point().x()), decimal.Decimal(m.point().y())]
 
+        # Call for function determining the intersection point
         self._intersect(geometry, centroid)
 
-    def _parameters(self, line_coords: List, centroid: List) -> List:
+    def _parameters(
+        self, line_coords: List, centroid: List
+    ) -> List:
         """Calculate values for a, b and c parameters"""
-        # In crs units (meters for EPSG: 3067)
+        # Radius is given in crs units (meters for EPSG: 3067)
         r = decimal.Decimal(self.ui.get_radius())
         # 1. Determine the function of the straight line the selected
         # line feature represents (each line can be seen as a limited
@@ -75,15 +90,17 @@ class IntersectionLineCircle(SelectTool):
         # See e.g. Standard Equation of a Circle section from
         # https://www.cuemath.com/geometry/equation-of-circle/
         # for more information.
-        # 3. Search for intersection point of these two functions by
-        # analytically modifying the resulting equation so that it is
-        # possible to solve x (and then y)
-        # 4. We end up with quadratic equation and need to solve
-        # it with
-        # The only exceptions are that the selected line
-        # does not intersect with the circle at all or that the line
-        # acts as a tangent for the circle.
-        print(f"Value of r is {r}")
+        # 3. Search for intersection point of the line and circle
+        # by setting there functions equal and analytically modifying
+        # the resulting equation so that it is possible to solve x
+        # (and then, after figuring out suitable value for x, y).
+        # 4. After some analytical simplifying of the particular
+        # equation you will see that it is needed to solve the
+        # quadratic equation in order to find suitable values for x.
+        # The parameters a, b and c to be solved come from the
+        # quadratic formula. See e.g.
+        # https://www.mathsisfun.com/algebra/quadratic-equation.html
+        # for more information.
         a = (
             (line_coords[3]) ** decimal.Decimal("2.0")
             - decimal.Decimal("2.0") * line_coords[1] * line_coords[3]
@@ -240,9 +257,11 @@ class IntersectionLineCircle(SelectTool):
         QgsProject.instance().addMapLayer(result_layer1)
         QgsProject.instance().addMapLayer(result_layer2)
 
-    def _intersect(self, geometry: QgsGeometry, centroid: List) -> QgsVectorLayer:
-        """Determine intersection point(s) of the selected
-        line and implicitly determined circle."""
+    def _intersect(
+        self, geometry: QgsGeometry, centroid: List
+    ) -> QgsVectorLayer:
+        """Determine the intersection point(s) of the selected
+        line and implicitly determined (centroid+radius) circle."""
         result_layer1 = QgsVectorLayer("Point", "temp", "memory")
         crs = self.layer.crs()
         result_layer1.setCrs(crs)
@@ -262,16 +281,16 @@ class IntersectionLineCircle(SelectTool):
             decimal.Decimal(end_point.y()),
         ]
 
-        # Determine the intersection point with the help of analytical geometry
+        # Call the functions capable of determining the parameter
+        # values needed to find out intersection point(s)
         parameters = self._parameters(line_coords, centroid)
 
         # Check that the selected line feature and indirectly
-        # defined circle intersect.
+        # defined circle intersect
         sqrt_in = (
             parameters[1] ** decimal.Decimal("2.0")
             - decimal.Decimal("4.0") * parameters[0] * parameters[2]
         )
-        print(f"Value of sqrt_in is {sqrt_in}")
         if sqrt_in < 0.0 or parameters[0] == 0.0:
             LOGGER.warning(
                 tr("There is no intersection point(s)!"),
@@ -279,10 +298,10 @@ class IntersectionLineCircle(SelectTool):
             )
             return
 
-        # Computing the coordinates for intersection points
-        x_sol1 = (-parameters[1] + decimal.Decimal(math.sqrt(sqrt_in))) / (
-            decimal.Decimal("2.0") * parameters[0]
-        )
+        # Computing the coordinates for the intersection point(s)
+        x_sol1 = (-parameters[1] + decimal.Decimal(math.sqrt(
+            sqrt_in
+        ))) / (decimal.Decimal("2.0") * parameters[0])
 
         y_sol1 = float(
             (
@@ -296,9 +315,9 @@ class IntersectionLineCircle(SelectTool):
 
         x_sol1 = float(x_sol1)
 
-        x_sol2 = (-parameters[1] - decimal.Decimal(math.sqrt(sqrt_in))) / (
-            decimal.Decimal("2.0") * parameters[0]
-        )
+        x_sol2 = (-parameters[1] - decimal.Decimal(math.sqrt(
+            sqrt_in
+        ))) / (decimal.Decimal("2.0") * parameters[0])
 
         y_sol2 = float(
             (
@@ -312,7 +331,8 @@ class IntersectionLineCircle(SelectTool):
 
         x_sol2 = float(x_sol2)
 
-        # Check that the result point lies in the map canvas extent
+        # Check that the intersection point(s) lie(s) in the
+        # map canvas extent
         extent = iface.mapCanvas().extent()
 
         if (
@@ -340,8 +360,9 @@ class IntersectionLineCircle(SelectTool):
             return
 
         # Check that the line genuinely intersects with a circle.
-        # In case the line only touches the circle, only one result
-        # layer gets generated since x_sol1 = x_sol2
+        # In case the line only touches the circle, the line forms
+        # a tangent for the circle and thus only one result
+        # layer gets generated (x_sol1 = x_sol2)
         if float(sqrt_in) == 0.0:
             self._one_layer(x_sol1, y_sol1)
         else:
