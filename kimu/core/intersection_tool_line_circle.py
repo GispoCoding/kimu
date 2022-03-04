@@ -1,6 +1,5 @@
-import math
 import decimal
-
+import math
 from typing import List
 
 from qgis.core import (
@@ -41,7 +40,7 @@ class IntersectionLineCircle(SelectTool):
             self.layer = layer
             self.setLayer(self.layer)
 
-    def canvasPressEvent(self, event: QgsMapToolEmitPoint) -> None: # fmt: skip
+    def canvasPressEvent(self, event: QgsMapToolEmitPoint) -> None:  # fmt: skip
         """Canvas click event for storing centroid point of the circle."""
         if self.iface.activeLayer() != self.layer:
             LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
@@ -85,43 +84,92 @@ class IntersectionLineCircle(SelectTool):
         # does not intersect with the circle at all or that the line
         # acts as a tangent for the circle.
         print(f"Value of r is {r}")
-        a = (line_coords[3]) ** decimal.Decimal('2.0') \
-            - decimal.Decimal('2.0') * line_coords[1] * line_coords[3] \
-            + (line_coords[1]) ** decimal.Decimal('2.0') \
-            + (line_coords[2]) ** decimal.Decimal('2.0') \
-            - decimal.Decimal('2.0') * line_coords[0] * line_coords[2] \
-            + (line_coords[0]) ** decimal.Decimal('2.0')
-        b = -decimal.Decimal('2.0') * (line_coords[3]) ** decimal.Decimal('2.0') * line_coords[0] \
-            + decimal.Decimal('2.0') * line_coords[1] * line_coords[3] * line_coords[2] \
-            + decimal.Decimal('2.0') * line_coords[1] * line_coords[3] * line_coords[0] \
-            - decimal.Decimal('2.0') * (line_coords[1]) ** decimal.Decimal('2.0') * line_coords[2] \
-            - decimal.Decimal('2.0') * centroid[0] * (line_coords[2]) ** decimal.Decimal('2.0') \
-            - decimal.Decimal('2.0') * centroid[0] * (line_coords[0]) ** decimal.Decimal('2.0') \
-            + decimal.Decimal('4.0') * centroid[0] * line_coords[0] * line_coords[2] \
-            - decimal.Decimal('2.0') * line_coords[2] * centroid[1] * line_coords[3] \
-            + decimal.Decimal('2.0') * centroid[1] * line_coords[1] * line_coords[2] \
-            + decimal.Decimal('2.0') * centroid[1] * line_coords[3] * line_coords[0] \
-            - decimal.Decimal('2.0') * centroid[1] * line_coords[1] * line_coords[0]
-        c = (line_coords[3]) ** decimal.Decimal('2.0') * (line_coords[0]) ** decimal.Decimal('2.0') \
-            - decimal.Decimal('2.0') * line_coords[0] * line_coords[1] * line_coords[2] * line_coords[3] \
-            + (line_coords[1]) ** decimal.Decimal('2.0') * (line_coords[2]) ** decimal.Decimal('2.0') \
-            + (centroid[0]) ** decimal.Decimal('2.0') * (line_coords[2]) ** decimal.Decimal('2.0') \
-            - decimal.Decimal('2.0') * (centroid[0]) ** decimal.Decimal('2.0') * line_coords[0] * line_coords[2] \
-            + (centroid[0]) ** decimal.Decimal('2.0') * (line_coords[0]) ** decimal.Decimal('2.0') \
-            + decimal.Decimal('2.0') * line_coords[2] * centroid[1] * line_coords[3] * line_coords[0] \
-            - decimal.Decimal('2.0') * (line_coords[2]) ** decimal.Decimal('2.0') * centroid[1] * line_coords[1] \
-            - decimal.Decimal('2.0') * (line_coords[0]) ** decimal.Decimal('2.0') * centroid[1] * line_coords[3] \
-            + decimal.Decimal('2.0') * centroid[1] * line_coords[1] * line_coords[2] * line_coords[0] \
-            + (line_coords[2]) ** decimal.Decimal('2.0') * (centroid[1]) ** decimal.Decimal('2.0') \
-            - (line_coords[2]) ** decimal.Decimal('2.0') * r ** decimal.Decimal('2.0') \
-            - decimal.Decimal('2.0') * line_coords[0] * line_coords[2] * (centroid[1]) ** decimal.Decimal('2.0') \
-            + decimal.Decimal('2.0') * line_coords[0] * line_coords[2] * r ** decimal.Decimal('2.0') \
-            + (line_coords[0]) ** decimal.Decimal('2.0') * (centroid[1]) ** decimal.Decimal('2.0') \
-            - (line_coords[0]) ** decimal.Decimal('2.0') * r ** decimal.Decimal('2.0')
+        a = (
+            (line_coords[3]) ** decimal.Decimal("2.0")
+            - decimal.Decimal("2.0") * line_coords[1] * line_coords[3]
+            + (line_coords[1]) ** decimal.Decimal("2.0")
+            + (line_coords[2]) ** decimal.Decimal("2.0")
+            - decimal.Decimal("2.0") * line_coords[0] * line_coords[2]
+            + (line_coords[0]) ** decimal.Decimal("2.0")
+        )
+        b = (
+            -decimal.Decimal("2.0")
+            * (line_coords[3]) ** decimal.Decimal("2.0")
+            * line_coords[0]
+            + decimal.Decimal("2.0") * line_coords[1] * line_coords[3] * line_coords[2]
+            + decimal.Decimal("2.0") * line_coords[1] * line_coords[3] * line_coords[0]
+            - decimal.Decimal("2.0")
+            * (line_coords[1]) ** decimal.Decimal("2.0")
+            * line_coords[2]
+            - decimal.Decimal("2.0")
+            * centroid[0]
+            * (line_coords[2]) ** decimal.Decimal("2.0")
+            - decimal.Decimal("2.0")
+            * centroid[0]
+            * (line_coords[0]) ** decimal.Decimal("2.0")
+            + decimal.Decimal("4.0") * centroid[0] * line_coords[0] * line_coords[2]
+            - decimal.Decimal("2.0") * line_coords[2] * centroid[1] * line_coords[3]
+            + decimal.Decimal("2.0") * centroid[1] * line_coords[1] * line_coords[2]
+            + decimal.Decimal("2.0") * centroid[1] * line_coords[3] * line_coords[0]
+            - decimal.Decimal("2.0") * centroid[1] * line_coords[1] * line_coords[0]
+        )
+        c = (
+            (line_coords[3]) ** decimal.Decimal("2.0")
+            * (line_coords[0]) ** decimal.Decimal("2.0")
+            - decimal.Decimal("2.0")
+            * line_coords[0]
+            * line_coords[1]
+            * line_coords[2]
+            * line_coords[3]
+            + (line_coords[1]) ** decimal.Decimal("2.0")
+            * (line_coords[2]) ** decimal.Decimal("2.0")
+            + (centroid[0]) ** decimal.Decimal("2.0")
+            * (line_coords[2]) ** decimal.Decimal("2.0")
+            - decimal.Decimal("2.0")
+            * (centroid[0]) ** decimal.Decimal("2.0")
+            * line_coords[0]
+            * line_coords[2]
+            + (centroid[0]) ** decimal.Decimal("2.0")
+            * (line_coords[0]) ** decimal.Decimal("2.0")
+            + decimal.Decimal("2.0")
+            * line_coords[2]
+            * centroid[1]
+            * line_coords[3]
+            * line_coords[0]
+            - decimal.Decimal("2.0")
+            * (line_coords[2]) ** decimal.Decimal("2.0")
+            * centroid[1]
+            * line_coords[1]
+            - decimal.Decimal("2.0")
+            * (line_coords[0]) ** decimal.Decimal("2.0")
+            * centroid[1]
+            * line_coords[3]
+            + decimal.Decimal("2.0")
+            * centroid[1]
+            * line_coords[1]
+            * line_coords[2]
+            * line_coords[0]
+            + (line_coords[2]) ** decimal.Decimal("2.0")
+            * (centroid[1]) ** decimal.Decimal("2.0")
+            - (line_coords[2]) ** decimal.Decimal("2.0") * r ** decimal.Decimal("2.0")
+            - decimal.Decimal("2.0")
+            * line_coords[0]
+            * line_coords[2]
+            * (centroid[1]) ** decimal.Decimal("2.0")
+            + decimal.Decimal("2.0")
+            * line_coords[0]
+            * line_coords[2]
+            * r ** decimal.Decimal("2.0")
+            + (line_coords[0]) ** decimal.Decimal("2.0")
+            * (centroid[1]) ** decimal.Decimal("2.0")
+            - (line_coords[0]) ** decimal.Decimal("2.0") * r ** decimal.Decimal("2.0")
+        )
         result = [a, b, c]
         return result
 
-    def _one_layer(self, x_sol1: QVariant.Double, y_sol1: QVariant.Double) -> QgsVectorLayer:
+    def _one_layer(
+        self, x_sol1: QVariant.Double, y_sol1: QVariant.Double
+    ) -> QgsVectorLayer:
         """Triggered when only one intersection point exists."""
         result_layer1 = QgsVectorLayer("Point", "temp", "memory")
         crs = self.layer.crs()
@@ -144,7 +192,13 @@ class IntersectionLineCircle(SelectTool):
 
         QgsProject.instance().addMapLayer(result_layer1)
 
-    def _two_layers(self, x_sol1: QVariant.Double, y_sol1: QVariant.Double, x_sol2: QVariant.Double, y_sol2: QVariant.Double) -> QgsVectorLayer:
+    def _two_layers(
+        self,
+        x_sol1: QVariant.Double,
+        y_sol1: QVariant.Double,
+        x_sol2: QVariant.Double,
+        y_sol2: QVariant.Double,
+    ) -> QgsVectorLayer:
         """Triggered when two intersection points exist."""
         result_layer1 = QgsVectorLayer("Point", "temp", "memory")
         crs = self.layer.crs()
@@ -201,14 +255,22 @@ class IntersectionLineCircle(SelectTool):
         line_feat = geometry.asPolyline()
         start_point = QgsPointXY(line_feat[0])
         end_point = QgsPointXY(line_feat[-1])
-        line_coords = [decimal.Decimal(start_point.x()), decimal.Decimal(start_point.y()), decimal.Decimal(end_point.x()), decimal.Decimal(end_point.y())]
+        line_coords = [
+            decimal.Decimal(start_point.x()),
+            decimal.Decimal(start_point.y()),
+            decimal.Decimal(end_point.x()),
+            decimal.Decimal(end_point.y()),
+        ]
 
         # Determine the intersection point with the help of analytical geometry
         parameters = self._parameters(line_coords, centroid)
 
         # Check that the selected line feature and indirectly
         # defined circle intersect.
-        sqrt_in = parameters[1] ** decimal.Decimal('2.0') - decimal.Decimal('4.0') * parameters[0] * parameters[2]
+        sqrt_in = (
+            parameters[1] ** decimal.Decimal("2.0")
+            - decimal.Decimal("4.0") * parameters[0] * parameters[2]
+        )
         print(f"Value of sqrt_in is {sqrt_in}")
         if sqrt_in < 0.0 or parameters[0] == 0.0:
             LOGGER.warning(
@@ -218,23 +280,35 @@ class IntersectionLineCircle(SelectTool):
             return
 
         # Computing the coordinates for intersection points
-        x_sol1 = (-parameters[1] + decimal.Decimal(math.sqrt(sqrt_in))) / (decimal.Decimal('2.0') * parameters[0])
+        x_sol1 = (-parameters[1] + decimal.Decimal(math.sqrt(sqrt_in))) / (
+            decimal.Decimal("2.0") * parameters[0]
+        )
 
-        y_sol1 = float(( x_sol1 * line_coords[3] \
-            - line_coords[0] * line_coords[3] \
-            - x_sol1 * line_coords[1] \
-            + line_coords[2] * line_coords[1] \
-        ) / (line_coords[2] - line_coords[0]))
+        y_sol1 = float(
+            (
+                x_sol1 * line_coords[3]
+                - line_coords[0] * line_coords[3]
+                - x_sol1 * line_coords[1]
+                + line_coords[2] * line_coords[1]
+            )
+            / (line_coords[2] - line_coords[0])
+        )
 
         x_sol1 = float(x_sol1)
 
-        x_sol2 = (-parameters[1] - decimal.Decimal(math.sqrt(sqrt_in))) / (decimal.Decimal('2.0') * parameters[0])
+        x_sol2 = (-parameters[1] - decimal.Decimal(math.sqrt(sqrt_in))) / (
+            decimal.Decimal("2.0") * parameters[0]
+        )
 
-        y_sol2 = float(( x_sol2 * line_coords[3] \
-            - line_coords[0] * line_coords[3] \
-            - x_sol2 * line_coords[1] \
-            + line_coords[2] * line_coords[1] \
-        ) / (line_coords[2] - line_coords[0]))
+        y_sol2 = float(
+            (
+                x_sol2 * line_coords[3]
+                - line_coords[0] * line_coords[3]
+                - x_sol2 * line_coords[1]
+                + line_coords[2] * line_coords[1]
+            )
+            / (line_coords[2] - line_coords[0])
+        )
 
         x_sol2 = float(x_sol2)
 

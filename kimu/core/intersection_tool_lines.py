@@ -1,6 +1,6 @@
 import decimal
-from qgis import processing
 
+from qgis import processing
 from qgis.core import (
     QgsFeature,
     QgsFeatureRequest,
@@ -77,7 +77,12 @@ class IntersectionLines:
             start_point = QgsPointXY(line_feat[0])
             end_point = QgsPointXY(line_feat[-1])
             line_points.extend(
-                [decimal.Decimal(start_point.x()), decimal.Decimal(start_point.y()), decimal.Decimal(end_point.x()), decimal.Decimal(end_point.y())]
+                [
+                    decimal.Decimal(start_point.x()),
+                    decimal.Decimal(start_point.y()),
+                    decimal.Decimal(end_point.x()),
+                    decimal.Decimal(end_point.y()),
+                ]
             )
 
         # Check that the selected line features are not parallel by
@@ -112,9 +117,11 @@ class IntersectionLines:
             ((line_points[3] - line_points[1]) / (line_points[2] - line_points[0]))
             - ((line_points[7] - line_points[5]) / (line_points[6] - line_points[4]))
         )
-        y = float(((line_points[3] - line_points[1]) / (line_points[2] - line_points[0])) * (
-            decimal.Decimal(x) - line_points[0]
-        ) + line_points[1])
+        y = float(
+            ((line_points[3] - line_points[1]) / (line_points[2] - line_points[0]))
+            * (decimal.Decimal(x) - line_points[0])
+            + line_points[1]
+        )
         x = float(x)
 
         # Check that the result point lies in the map canvas extent
