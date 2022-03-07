@@ -15,6 +15,7 @@ from qgis.core import (
     QgsWkbTypes,
 )
 from qgis.gui import QgisInterface, QgsMapMouseEvent, QgsMapToolIdentify
+from qgis.PyQt.QtGui import QColor
 
 from ..qgis_plugin_tools.tools.custom_logging import setup_logger
 from ..qgis_plugin_tools.tools.i18n import tr
@@ -110,7 +111,7 @@ class SplitTool(SelectTool):
         split_layer_ids = [feature.id() for feature in split_layer.getFeatures()]
         categories = []
         for id_ in split_layer_ids:
-            symbol = QgsLineSymbol.createSimple(properties={"width": "2"})
+            symbol = QgsLineSymbol.createSimple(properties={"width": "0.7"})
             category = QgsRendererCategory(id_, symbol, str(id_))
             categories.append(category)
         renderer = QgsCategorizedSymbolRenderer("$id", categories)
@@ -133,5 +134,6 @@ class SplitTool(SelectTool):
         )
         vertex_layer = extract_result["OUTPUT"]
         vertex_layer.setName(tr("Nodes"))
-        vertex_layer.renderer().symbol().setSize(3)
+        vertex_layer.renderer().symbol().setSize(2)
+        vertex_layer.renderer().symbol().setColor(QColor.fromRgb(255, 192, 203))
         return vertex_layer

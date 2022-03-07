@@ -6,6 +6,7 @@ from qgis.core import (
     QgsVectorLayer,
     QgsWkbTypes,
 )
+from qgis.PyQt.QtGui import QColor
 from qgis.utils import iface
 
 from ..qgis_plugin_tools.tools.custom_logging import setup_logger
@@ -59,7 +60,9 @@ class ExplodeTool:
 
         explode_layer: QgsVectorLayer = explode_result["OUTPUT"]
         explode_layer.setName(tr("Exploded polygon to lines"))
-        explode_layer.renderer().symbol().setWidth(2)
+        explode_layer.renderer().symbol().setWidth(0.7)
+        explode_layer.renderer().symbol().setColor(QColor.fromRgb(135, 206, 250))
         QgsProject.instance().addMapLayer(explode_layer)
 
-        self.split_tool.manual_activate()
+        # If wanted, can be launched automatically
+        # self.split_tool.manual_activate()

@@ -6,6 +6,7 @@ from qgis.core import (
     QgsVectorLayer,
     QgsWkbTypes,
 )
+from qgis.PyQt.QtGui import QColor
 from qgis.utils import iface
 
 from ..qgis_plugin_tools.tools.custom_logging import setup_logger
@@ -59,4 +60,5 @@ class ExplodeLines2points:
         explode_layer: QgsVectorLayer = explode_result2["OUTPUT"]
         explode_layer.setName(tr("Exploded line as points"))
         explode_layer.renderer().symbol().setSize(2)
+        explode_layer.renderer().symbol().setColor(QColor.fromRgb(255, 192, 203))
         QgsProject.instance().addMapLayer(explode_layer)
