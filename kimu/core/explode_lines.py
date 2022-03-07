@@ -6,6 +6,7 @@ from qgis.core import (
     QgsVectorLayer,
     QgsWkbTypes,
 )
+from qgis.PyQt.QtGui import QColor
 from qgis.utils import iface
 
 from ..qgis_plugin_tools.tools.custom_logging import setup_logger
@@ -48,5 +49,6 @@ class ExplodeLines:
         result_layer = line_result["OUTPUT"]
 
         result_layer.setName(tr("Exploded line"))
-        result_layer.renderer().symbol().setWidth(1)
+        result_layer.renderer().symbol().setWidth(0.7)
+        result_layer.renderer().symbol().setColor(QColor.fromRgb(135, 206, 250))
         QgsProject.instance().addMapLayer(result_layer)
