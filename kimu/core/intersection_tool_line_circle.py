@@ -89,7 +89,6 @@ class IntersectionLineCircle(SelectTool):
         # Snap the click to the closest point feature available.
         # Note that your QGIS's snapping options have on effect
         # on which objects / vertexes the tool will snap
-
         m = self.iface.mapCanvas().snappingUtils().snapToMap(event.pos())
         self.i.setMatch(m)
 
