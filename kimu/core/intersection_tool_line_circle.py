@@ -86,9 +86,7 @@ class IntersectionLineCircle(SelectTool):
         else:
             geometry = self.iface.activeLayer().selectedFeatures()[0].geometry()
 
-        # Snap the click to the closest point feature available.
-        # Note that your QGIS's snapping options have on effect
-        # on which objects / vertexes the tool will snap
+        # Snap the click to the closest point feature available
         m = self.iface.mapCanvas().snappingUtils().snapToMap(event.pos())
         self.i.setMatch(m)
 
@@ -269,14 +267,6 @@ class IntersectionLineCircle(SelectTool):
     def _intersect(self, geometry: QgsGeometry, centroid: List[Decimal]) -> None:
         """Determine the intersection point(s) of the selected
         line and implicitly determined (centroid+radius) circle."""
-        result_layer1 = QgsVectorLayer("Point", "temp", "memory")
-        crs = self.layer.crs()
-        result_layer1.setCrs(crs)
-        result_layer1_dataprovider = result_layer1.dataProvider()
-        result_layer1_dataprovider.addAttributes(
-            [QgsField("xcoord", QVariant.Double), QgsField("ycoord", QVariant.Double)]
-        )
-        result_layer1.updateFields()
 
         line_feat = geometry.asPolyline()
         start_point = QgsPointXY(line_feat[0])
