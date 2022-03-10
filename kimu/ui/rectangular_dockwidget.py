@@ -1,0 +1,22 @@
+from PyQt5.QtWidgets import QWidget
+from qgis.gui import QgisInterface, QgsDoubleSpinBox
+from qgis.PyQt import QtWidgets
+
+from ..qgis_plugin_tools.tools.resources import load_ui
+
+FORM_CLASS: QWidget = load_ui("rectangular_dockwidget.ui")
+
+
+class RectangularDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
+    def __init__(self, iface: QgisInterface) -> None:
+        super().__init__()
+        self.setupUi(self)
+        self.iface = iface
+
+    def get_a_measure(self) -> float:
+        self.doublespinbox_a: QgsDoubleSpinBox
+        return self.doublespinbox_a.value()
+
+    def get_b_measure(self) -> float:
+        self.doublespinbox_b: QgsDoubleSpinBox
+        return self.doublespinbox_b.value()
