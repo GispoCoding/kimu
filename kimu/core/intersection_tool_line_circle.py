@@ -252,14 +252,6 @@ class IntersectionLineCircle(SelectTool):
     def _intersect(self, geometry: QgsGeometry, centroid: List[Decimal]) -> None:
         """Determine the intersection point(s) of the selected
         line and implicitly determined (centroid+radius) circle."""
-        result_layer1 = QgsVectorLayer("Point", "temp", "memory")
-        crs = self.layer.crs()
-        result_layer1.setCrs(crs)
-        result_layer1_dataprovider = result_layer1.dataProvider()
-        result_layer1_dataprovider.addAttributes(
-            [QgsField("xcoord", QVariant.Double), QgsField("ycoord", QVariant.Double)]
-        )
-        result_layer1.updateFields()
 
         line_feat = geometry.asPolyline()
         start_point = QgsPointXY(line_feat[0])
