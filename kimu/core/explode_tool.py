@@ -12,14 +12,15 @@ from qgis.utils import iface
 from ..qgis_plugin_tools.tools.custom_logging import setup_logger
 from ..qgis_plugin_tools.tools.i18n import tr
 from ..qgis_plugin_tools.tools.resources import plugin_name
-from .split_tool import SplitTool
+
+# from .split_tool import SplitTool
 
 LOGGER = setup_logger(plugin_name())
 
 
 class ExplodeTool:
-    def __init__(self, split_tool: SplitTool) -> None:
-        self.split_tool = split_tool
+    # def __init__(self, split_tool: SplitTool) -> None:
+    # self.split_tool = split_tool
 
     @staticmethod
     def __check_valid_layer(layer: QgsVectorLayer) -> bool:
@@ -64,5 +65,6 @@ class ExplodeTool:
         explode_layer.renderer().symbol().setColor(QColor.fromRgb(135, 206, 250))
         QgsProject.instance().addMapLayer(explode_layer)
 
-        # If wanted, can be launched automatically
+        # If wanted, can be launched automatically by removing
+        # the comments in this and plugin.py file
         # self.split_tool.manual_activate()

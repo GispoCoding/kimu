@@ -10,11 +10,13 @@ from .core.explode_lines2points import ExplodeLines2points
 from .core.explode_tool import ExplodeTool
 from .core.intersection_tool_line_circle import IntersectionLineCircle
 from .core.intersection_tool_lines import IntersectionLines
+from .core.rectangular_tool import RectangularMapping
 from .core.split_tool import SplitTool
 from .qgis_plugin_tools.tools.custom_logging import setup_logger, teardown_logger
 from .qgis_plugin_tools.tools.i18n import setup_translation, tr
 from .qgis_plugin_tools.tools.resources import plugin_name
 from .ui.line_circle_dockwidget import LineCircleDockWidget
+from .ui.rectangular_dockwidget import RectangularDockWidget
 from .ui.split_tool_dockwidget import SplitToolDockWidget
 
 LOGGER = setup_logger(plugin_name())
@@ -28,16 +30,21 @@ class Plugin:
         self.iface = iface
         split_tool_dockwidget = SplitToolDockWidget(iface)
         line_circle_dockwidget = LineCircleDockWidget(iface)
+        rectangular_dockwidget = RectangularDockWidget(iface)
         self.split_tool = SplitTool(self.iface, split_tool_dockwidget)
-        self.explode_tool = ExplodeTool(self.split_tool)
+        # If you wish to uncomment this line:
+        # self.explode_tool = ExplodeTool(self.split_tool)
+        # you need to comment out this one:
+        self.explode_tool = ExplodeTool()
         self.explode_lines = ExplodeLines()
         self.explode_lines2points = ExplodeLines2points()
         self.intersection_tool_lines = IntersectionLines()
         self.intersection_tool_line_circle = IntersectionLineCircle(
             self.iface, line_circle_dockwidget
         )
+        self.rectangular_tool = RectangularMapping(self.iface, rectangular_dockwidget)
 
-        # initialize locale
+        # Initialize locale
         locale, file_path = setup_translation()
         if file_path:
             self.translator = QTranslator()
@@ -160,6 +167,16 @@ class Plugin:
         )
         line_circle_action.setCheckable(True)
         self.intersection_tool_line_circle.setAction(line_circle_action)
+        rectangular_action = self.add_action(
+            "",
+            text=tr("Find rectangular point"),
+            callback=self.activate_rectangular_tool,
+            parent=self.iface.mainWindow(),
+            add_to_menu=False,
+            add_to_toolbar=True,
+        )
+        rectangular_action.setCheckable(True)
+        self.rectangular_tool.setAction(rectangular_action)
         split_action = self.add_action(
             "",
             text=tr("Split"),
@@ -195,11 +212,14 @@ class Plugin:
         self.intersection_tool_lines.run()
 
     def activate_intersection_tool_line_circle(self) -> None:
-        # self.intersection_tool_line_circle.run()
         self.iface.addDockWidget(
             Qt.RightDockWidgetArea, self.intersection_tool_line_circle.ui
         )
         self.iface.mapCanvas().setMapTool(self.intersection_tool_line_circle)
+
+    def activate_rectangular_tool(self) -> None:
+        self.iface.addDockWidget(Qt.RightDockWidgetArea, self.rectangular_tool.ui)
+        self.iface.mapCanvas().setMapTool(self.rectangular_tool)
 
     def activate_split_tool(self) -> None:
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.split_tool.ui)
