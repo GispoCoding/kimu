@@ -8,12 +8,10 @@ from qgis.core import (
     QgsGeometry,
     QgsPointXY,
     QgsProject,
-    QgsSnappingConfig,
-    QgsTolerance,
     QgsVectorLayer,
     QgsWkbTypes,
 )
-from qgis.gui import QgisInterface, QgsMapToolEmitPoint, QgsSnapIndicator
+from qgis.gui import QgisInterface, QgsMapToolEmitPoint
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor
 from qgis.utils import iface
@@ -22,6 +20,7 @@ from ..qgis_plugin_tools.tools.custom_logging import setup_logger
 from ..qgis_plugin_tools.tools.i18n import tr
 from ..qgis_plugin_tools.tools.resources import plugin_name
 from ..ui.rectangular_dockwidget import RectangularDockWidget
+from .click_tool import ClickTool
 from .select_tool import SelectTool
 
 LOGGER = setup_logger(plugin_name())
@@ -33,16 +32,6 @@ class RectangularMapping(SelectTool):
     ) -> None:
         super().__init__(iface)
         self.ui: RectangularDockWidget = dock_widget
-        # Set suitable snapping settings
-        my_snap_config = QgsSnappingConfig()
-        my_snap_config.setEnabled(True)
-        my_snap_config.setType(QgsSnappingConfig.Vertex)
-        my_snap_config.setUnits(QgsTolerance.Pixels)
-        my_snap_config.setTolerance(15)
-        my_snap_config.setIntersectionSnapping(True)
-        my_snap_config.setMode(QgsSnappingConfig.AllLayers)
-        QgsProject.instance().setSnappingConfig(my_snap_config)
-        self.i = QgsSnapIndicator(self.iface.mapCanvas())
 
     def active_changed(self, layer: QgsVectorLayer) -> None:
         """Triggered when active layer changes."""
@@ -65,37 +54,31 @@ class RectangularMapping(SelectTool):
                            extra={"details": ""})
             return
 
-        check = 0
-        for test_feature in self.iface.activeLayer().getFeatures():
-            if check == 0:
-                test_geom = test_feature.geometry()
-                if QgsWkbTypes.isSingleType(test_geom.wkbType()):
-                    pass
-                else:
-                    LOGGER.warning(
-                        tr("Please select a line layer with "
-                           "LineString geometries (instead "
-                           "of MultiLineString geometries)"),
-                        extra={"details": ""})
-                    return
-                check = 1
-            else:
-                pass
+        if QgsWkbTypes.isSingleType(
+            list(
+                self.iface.activeLayer().getFeatures()
+            )[0].geometry().wkbType()
+        ):
+            pass
+        else:
+            LOGGER.warning(
+                tr("Please select a line layer with "
+                   "LineString geometries (instead "
+                   "of MultiLineString geometries)"),
+                extra={"details": ""})
+            return
 
         if len(self.iface.activeLayer().selectedFeatures()) != 1:
             LOGGER.warning(tr("Please select only one line"),
                            extra={"details": ""})
             return
-        else:
-            geometry = self.iface.activeLayer().selectedFeatures()[0].geometry()
 
-        # Snap the click to the closest point feature available
-        m = self.iface.mapCanvas().snappingUtils().snapToMap(event.pos())
-        self.i.setMatch(m)
+        geometry = self.iface.activeLayer().selectedFeatures()[0].geometry()
 
-        # Coordinates of the property boundary line's end point we
+        # Snap the click to the closest point feature available and get
+        # the coordinates of the property boundary line's end point we
         # wish to measure the distance from
-        start_point = [Decimal(m.point().x()), Decimal(m.point().y())]
+        start_point = ClickTool(self.iface).activate(event)
 
         # Coordinates of the points implicitly defining the property boundary line
         line_feat = geometry.asPolyline()
@@ -127,7 +110,10 @@ class RectangularMapping(SelectTool):
         point_a = self._locate_point_a(line_coords, parameters)
 
         # Call for function capable of determining point_b
-        self._locate_point_b(line_coords, point_a)
+        points_b = self._locate_point_b(line_coords, point_a)
+
+        # Add result layers to map canvas
+        self._add_result_layers(points_b)
 
     def _calculate_parameters(
         self, line_coords: List[Decimal]
@@ -135,7 +121,7 @@ class RectangularMapping(SelectTool):
         """Calculate values for a, b and c parameters"""
         # a_measure is given in crs units (meters for EPSG: 3067)
         a_measure = Decimal(self.ui.get_a_measure())
-        # ADD DESCRIPTION OF THE IDEA!
+        # TODO: add description of the idea
         a = (
             (line_coords[2]) ** Decimal("2.0")
             - Decimal("2.0") * line_coords[0] * line_coords[2]
@@ -189,56 +175,6 @@ class RectangularMapping(SelectTool):
         )
         result = [a, b, c]
         return result
-
-    def _add_result_layers(
-        self,
-        x_b1: QVariant.Double,
-        y_b1: QVariant.Double,
-        x_b2: QVariant.Double,
-        y_b2: QVariant.Double,
-    ) -> None:
-        """Triggered when result layer needs to be generated."""
-        result_layer1 = QgsVectorLayer("Point", "temp", "memory")
-        crs = self.layer.crs()
-        result_layer1.setCrs(crs)
-        result_layer1_dataprovider = result_layer1.dataProvider()
-        result_layer1_dataprovider.addAttributes(
-            [QgsField("xcoord", QVariant.Double), QgsField("ycoord", QVariant.Double)]
-        )
-        result_layer1.updateFields()
-
-        point_b1 = QgsPointXY(x_b1, y_b1)
-        f1 = QgsFeature()
-        f1.setGeometry(QgsGeometry.fromPointXY(point_b1))
-        f1.setAttributes([round(x_b1, 2), round(y_b1, 2)])
-        result_layer1_dataprovider.addFeature(f1)
-        result_layer1.updateExtents()
-
-        result_layer1.setName(tr("Solution point 1"))
-        result_layer1.renderer().symbol().setSize(2)
-        result_layer1.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
-
-        QgsProject.instance().addMapLayer(result_layer1)
-
-        result_layer2 = QgsVectorLayer("Point", "temp", "memory")
-        result_layer2.setCrs(crs)
-        result_layer2_dataprovider = result_layer2.dataProvider()
-        result_layer2_dataprovider.addAttributes(
-            [QgsField("xcoord", QVariant.Double), QgsField("ycoord", QVariant.Double)]
-        )
-        result_layer2.updateFields()
-        point_b2 = QgsPointXY(x_b2, y_b2)
-        f2 = QgsFeature()
-        f2.setGeometry(QgsGeometry.fromPointXY(point_b2))
-        f2.setAttributes([round(x_b2, 2), round(y_b2, 2)])
-        result_layer2_dataprovider.addFeature(f2)
-        result_layer2.updateExtents()
-
-        result_layer2.setName(tr("Solution point 2"))
-        result_layer2.renderer().symbol().setSize(2)
-        result_layer2.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
-
-        QgsProject.instance().addMapLayer(result_layer2)
 
     def _locate_point_a(
         self, line_coords: List[Decimal], parameters: List[Decimal]
@@ -302,13 +238,13 @@ class RectangularMapping(SelectTool):
             x_a = x_a2
             y_a = y_a2
 
-        point_res = [x_a, y_a]
+        point_a_res = [x_a, y_a]
 
-        return point_res
+        return point_a_res
 
     def _locate_point_b(
         self, line_coords: List[Decimal], point_a: List[Decimal]
-    ) -> None:
+    ) -> List[float]:
         """Determine the coordinates of point_b belonging to the line which is
         orthogonal to the property boundary line and goes through point_a."""
 
@@ -385,7 +321,7 @@ class RectangularMapping(SelectTool):
                 tr("Solution point 1 lies outside of the map canvas!"),
                 extra={"details": ""},
             )
-            return
+            return []
 
         if (
             x_b2 < extent.xMinimum()
@@ -397,7 +333,55 @@ class RectangularMapping(SelectTool):
                 tr("Solution point 2 lies outside of the map canvas!"),
                 extra={"details": ""},
             )
-            return
+            return []
 
-        # Add result layers to map canvas
-        self._add_result_layers(x_b1, y_b1, x_b2, y_b2)
+        points_b_res = [x_b1, y_b1, x_b2, y_b2]
+
+        return points_b_res
+
+    def _add_result_layers(
+        self,
+        b_points: List[float],
+    ) -> None:
+        """Triggered when result layer needs to be generated."""
+        result_layer1 = QgsVectorLayer("Point", "temp", "memory")
+        crs = self.layer.crs()
+        result_layer1.setCrs(crs)
+        result_layer1_dataprovider = result_layer1.dataProvider()
+        result_layer1_dataprovider.addAttributes(
+            [QgsField("xcoord", QVariant.Double), QgsField("ycoord", QVariant.Double)]
+        )
+        result_layer1.updateFields()
+
+        point_b1 = QgsPointXY(b_points[0], b_points[1])
+        f1 = QgsFeature()
+        f1.setGeometry(QgsGeometry.fromPointXY(point_b1))
+        f1.setAttributes([round(b_points[0], 2), round(b_points[1], 2)])
+        result_layer1_dataprovider.addFeature(f1)
+        result_layer1.updateExtents()
+
+        result_layer1.setName(tr("Solution point 1"))
+        result_layer1.renderer().symbol().setSize(2)
+        result_layer1.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
+
+        QgsProject.instance().addMapLayer(result_layer1)
+
+        result_layer2 = QgsVectorLayer("Point", "temp", "memory")
+        result_layer2.setCrs(crs)
+        result_layer2_dataprovider = result_layer2.dataProvider()
+        result_layer2_dataprovider.addAttributes(
+            [QgsField("xcoord", QVariant.Double), QgsField("ycoord", QVariant.Double)]
+        )
+        result_layer2.updateFields()
+        point_b2 = QgsPointXY(b_points[2], b_points[3])
+        f2 = QgsFeature()
+        f2.setGeometry(QgsGeometry.fromPointXY(point_b2))
+        f2.setAttributes([round(b_points[2], 2), round(b_points[3], 2)])
+        result_layer2_dataprovider.addFeature(f2)
+        result_layer2.updateExtents()
+
+        result_layer2.setName(tr("Solution point 2"))
+        result_layer2.renderer().symbol().setSize(2)
+        result_layer2.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
+
+        QgsProject.instance().addMapLayer(result_layer2)

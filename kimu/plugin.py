@@ -32,7 +32,10 @@ class Plugin:
         line_circle_dockwidget = LineCircleDockWidget(iface)
         rectangular_dockwidget = RectangularDockWidget(iface)
         self.split_tool = SplitTool(self.iface, split_tool_dockwidget)
-        self.explode_tool = ExplodeTool(self.split_tool)
+        # If you wish to uncomment this line:
+        # self.explode_tool = ExplodeTool(self.split_tool)
+        # you need to comment out this one:
+        self.explode_tool = ExplodeTool()
         self.explode_lines = ExplodeLines()
         self.explode_lines2points = ExplodeLines2points()
         self.intersection_tool_lines = IntersectionLines()
@@ -41,7 +44,7 @@ class Plugin:
         )
         self.rectangular_tool = RectangularMapping(self.iface, rectangular_dockwidget)
 
-        # initialize locale
+        # Initialize locale
         locale, file_path = setup_translation()
         if file_path:
             self.translator = QTranslator()
@@ -209,7 +212,6 @@ class Plugin:
         self.intersection_tool_lines.run()
 
     def activate_intersection_tool_line_circle(self) -> None:
-        # self.intersection_tool_line_circle.run()
         self.iface.addDockWidget(
             Qt.RightDockWidgetArea, self.intersection_tool_line_circle.ui
         )
