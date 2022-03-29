@@ -119,7 +119,7 @@ class RectangularMapping(SelectTool):
         points_b = self._locate_point_b(line_coords, point_a)
 
         corners: List[List[Decimal]]
-        corners = [[]]
+        corners = []
 
         corners = self._add_scratch_layers(points_b, corners)
 
