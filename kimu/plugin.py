@@ -169,7 +169,7 @@ class Plugin:
         self.intersection_tool_line_circle.setAction(line_circle_action)
         rectangular_action = self.add_action(
             "",
-            text=tr("Find rectangular point"),
+            text=tr("Rectangular mapping"),
             callback=self.activate_rectangular_tool,
             parent=self.iface.mainWindow(),
             add_to_menu=False,

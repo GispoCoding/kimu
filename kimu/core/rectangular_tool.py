@@ -121,7 +121,38 @@ class RectangularMapping(SelectTool):
         corners: List[List[Decimal]]
         corners = []
 
-        corners = self._add_scratch_layers(points_b, corners)
+        polku = self.ui.get_output_file()
+
+        tasotb = self._add_scratch_layers(points_b, corners)
+        scratchb1 = tasotb[0]
+        scratchb2 = tasotb[1]
+        mb = QMessageBox()
+        mb.setText(
+            'Do you want to choose alternative 1 for corner point '
+            + str(len(corners) + 1) + '?'
+        )
+        mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        ret = mb.exec()
+        if ret == QMessageBox.No:
+            opt = QgsVectorFileWriter.SaveVectorOptions()
+            opt.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
+            QgsVectorFileWriter.writeAsVectorFormat(scratchb2, polku, opt)
+            corners.append([points_b[2], points_b[3]])
+        elif ret == QMessageBox.Yes:
+            opt = QgsVectorFileWriter.SaveVectorOptions()
+            opt.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
+            QgsVectorFileWriter.writeAsVectorFormat(scratchb1, polku, opt)
+            corners.append([points_b[0], points_b[1]])
+        else:
+            LOGGER.warning(
+                tr("Ei haluta tänne!"),
+                extra={"details": ""},
+            )
+            return
+
+        # Crashaa, jos uncommentoidaan nämä
+        # QgsProject.instance().removeMapLayer(scratchb1.id())
+        # QgsProject.instance().removeMapLayer(scratchb2.id())
 
         point_b: List[Decimal]
         point_b = corners[0]
@@ -142,12 +173,47 @@ class RectangularMapping(SelectTool):
             c_measure = Decimal(c_measure_list[i])
             if i == 0:
                 point_c = self._locate_point_c(c_measure, point_a, point_b)
-                corners = self._add_scratch_layers(point_c, corners)
+                tasot = self._add_scratch_layers(point_c, corners)
+                scratch1 = tasot[0]
+                opt = QgsVectorFileWriter.SaveVectorOptions()
+                opt.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
+                QgsVectorFileWriter.writeAsVectorFormat(scratch1, polku, opt)
+                corners.append([point_c[0], point_c[1]])
+                # QgsProject.instance().removeMapLayer(scratch1.id())
+            # Aika turha funktio, melkein voisi poistaa tämän
             elif i == (len(c_measure_list) - 1):
                 self._check_last_point(c_measure, corners)
             else:
                 new_corner_points = self._locate_point_d(c_measure, corners)
-                corners = self._add_scratch_layers(new_corner_points, corners)
+                tasot = self._add_scratch_layers(new_corner_points, corners)
+                scratch1 = tasot[0]
+                scratch2 = tasot[1]
+                mb = QMessageBox()
+                mb.setText(
+                    'Do you want to choose alternative 1 for corner point '
+                    + str(len(corners) + 1) + '?'
+                )
+                mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                ret = mb.exec()
+                if ret == QMessageBox.No:
+                    op = QgsVectorFileWriter.SaveVectorOptions()
+                    op.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
+                    QgsVectorFileWriter.writeAsVectorFormat(scratch2, polku, op)
+                    corners.append([new_corner_points[2], new_corner_points[3]])
+                elif ret == QMessageBox.Yes:
+                    op = QgsVectorFileWriter.SaveVectorOptions()
+                    op.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
+                    QgsVectorFileWriter.writeAsVectorFormat(scratch1, polku, op)
+                    corners.append([new_corner_points[0], new_corner_points[1]])
+                else:
+                    LOGGER.warning(
+                        tr("Ei haluta tänne!"),
+                        extra={"details": ""},
+                    )
+                    return
+                # Crashaa, jos uncommentoidaan nämä
+                # QgsProject.instance().removeMapLayer(scratch1.id())
+                # QgsProject.instance().removeMapLayer(scratch2.id())
 
     def _calculate_parameters(
         self, line_coords: List[Decimal]
@@ -640,14 +706,16 @@ class RectangularMapping(SelectTool):
             )
             return
 
-        # TAMA TESTI EI TUNNU TOIMIVAN!
+        # Huomaa, että viimeisellä etäisyydellä ei ole mitään väliä,
+        # sillä sen mukaista pistettä ei ikinä piirretä kartalle!
+        # Oletetaan, että viimeinen syötetty sivun pituus matchaa tarpeisiin
         if (
-            (x_last1 == corners[0][0] and y_last1 == corners[0][1])
+            (int(x_last1) != int(corners[0][0]) and int(x_last2) != int(corners[0][0]))
             or
-            (x_last2 == corners[0][0] and y_last2 == corners[0][1])
+            (int(y_last1) != int(corners[0][1]) and int(y_last2) != int(corners[0][1]))
         ):
             LOGGER.warning(
-                tr("First corner point was not reached!"),
+                tr("Rectangular mapping failed!"),
                 extra={"details": ""},
             )
             return
@@ -657,7 +725,7 @@ class RectangularMapping(SelectTool):
     def _add_scratch_layers(
         self,
         points: List[Decimal], corners: List[List[Decimal]]
-    ) -> List[List[Decimal]]:
+    ) -> List[QgsVectorLayer]:
         """Triggered when result layer needs to be generated."""
         scratch_layer1 = QgsVectorLayer("Point", "temp", "memory")
         crs = self.layer.crs()
@@ -718,9 +786,6 @@ class RectangularMapping(SelectTool):
 
         QgsProject.instance().addMapLayer(scratch_layer1)
 
-        polku = self.ui.get_output_file()
-        print(polku)
-
         if len(points) > 2:
             scratch_layer2 = QgsVectorLayer("Point", "temp", "memory")
             scratch_layer2.setCrs(crs)
@@ -753,32 +818,7 @@ class RectangularMapping(SelectTool):
 
             QgsProject.instance().addMapLayer(scratch_layer2)
 
-            mb = QMessageBox()
-            mb.setText(
-                'Do you want to choose alternative 1 for corner point '
-                + str(len(corners)+1) + '?'
-            )
-            mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-            return_value = mb.exec()
-            if return_value == QMessageBox.No:
-                opt = QgsVectorFileWriter.SaveVectorOptions()
-                opt.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
-                QgsVectorFileWriter.writeAsVectorFormat(scratch_layer2, polku, opt)
-                corners.append([points[2], points[3]])
-            else:
-                opt = QgsVectorFileWriter.SaveVectorOptions()
-                opt.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
-                QgsVectorFileWriter.writeAsVectorFormat(scratch_layer1, polku, opt)
-                corners.append([points[0], points[1]])
+        if len(points) > 2:
+            return [scratch_layer1, scratch_layer2]
         else:
-            opt = QgsVectorFileWriter.SaveVectorOptions()
-            opt.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
-            QgsVectorFileWriter.writeAsVectorFormat(scratch_layer1, polku, opt)
-            corners.append([points[0], points[1]])
-
-        # Crashes, if we try to uncomment these rows!
-        # Poistetaan tasot, kun on tehty päätös kumpi pidetään
-        # QgsProject.instance().removeMapLayer(scratch_layer1.id())
-        # QgsProject.instance().removeMapLayer(scratch_layer2.id())
-
-        return corners
+            return [scratch_layer1]
