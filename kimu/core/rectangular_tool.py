@@ -123,9 +123,26 @@ class RectangularMapping(SelectTool):
 
         polku = self.ui.get_output_file()
 
-        tasotb = self._add_scratch_layers(points_b, corners)
-        scratchb1 = tasotb[0]
-        scratchb2 = tasotb[1]
+        options_layer = QgsVectorLayer("Point", "temp", "memory")
+        crs = self.layer.crs()
+        options_layer.setCrs(crs)
+        options_layer_dataprovider = options_layer.dataProvider()
+        options_layer_dataprovider.addAttributes(
+            [QgsField("id", QVariant.String), QgsField("xcoord", QVariant.Double)]
+        )
+        options_layer.updateFields()
+
+        opt_ids: List[int]
+        opt_ids = []
+        poistettavat: List[int]
+        poistettavat = []
+
+        self._add_points(points_b, corners, options_layer, opt_ids)
+
+        QgsProject.instance().addMapLayer(options_layer)
+
+        options_layer.startEditing()
+
         mb = QMessageBox()
         mb.setText(
             'Do you want to choose alternative 1 for corner point '
@@ -134,25 +151,12 @@ class RectangularMapping(SelectTool):
         mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
         ret = mb.exec()
         if ret == QMessageBox.No:
-            opt = QgsVectorFileWriter.SaveVectorOptions()
-            opt.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
-            QgsVectorFileWriter.writeAsVectorFormat(scratchb2, polku, opt)
+            poistettavat.append(opt_ids[0])
             corners.append([points_b[2], points_b[3]])
-        elif ret == QMessageBox.Yes:
-            opt = QgsVectorFileWriter.SaveVectorOptions()
-            opt.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
-            QgsVectorFileWriter.writeAsVectorFormat(scratchb1, polku, opt)
-            corners.append([points_b[0], points_b[1]])
+        # eli kun ret == QMessageBox.Yes:
         else:
-            LOGGER.warning(
-                tr("Ei haluta tänne!"),
-                extra={"details": ""},
-            )
-            return
-
-        # Crashaa, jos uncommentoidaan nämä
-        # QgsProject.instance().removeMapLayer(scratchb1.id())
-        # QgsProject.instance().removeMapLayer(scratchb2.id())
+            poistettavat.append(opt_ids[1])
+            corners.append([points_b[0], points_b[1]])
 
         point_b: List[Decimal]
         point_b = corners[0]
@@ -160,34 +164,22 @@ class RectangularMapping(SelectTool):
         # c_measures are given in crs units (meters for EPSG: 3067)
         c_measure_list = self.ui.get_c_measures().split(",")
 
-        if (len(c_measure_list) % 2) != 0:
-            LOGGER.warning(
-                tr("Please insert even number of c measures!"),
-                extra={"details": ""},
-            )
-            return
-
         for i in range(len(c_measure_list)):
             # Määritetään toinen nurkkapiste, joka muista poiketen
             # sijaitsee samalla suoralla kuin ensimmäinen nurkkapiste
             c_measure = Decimal(c_measure_list[i])
             if i == 0:
                 point_c = self._locate_point_c(c_measure, point_a, point_b)
-                tasot = self._add_scratch_layers(point_c, corners)
-                scratch1 = tasot[0]
-                opt = QgsVectorFileWriter.SaveVectorOptions()
-                opt.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
-                QgsVectorFileWriter.writeAsVectorFormat(scratch1, polku, opt)
+                self._add_points(point_c, corners, options_layer, opt_ids)
                 corners.append([point_c[0], point_c[1]])
-                # QgsProject.instance().removeMapLayer(scratch1.id())
-            # Aika turha funktio, melkein voisi poistaa tämän
+            # TURHA FUNKTIO, POISTETAAN! Ei ole mitaan syyta vaatia, etta
+            # paadyttaisiin aina rakennuksen aloituspisteeseen
+            # (voidaan haluta kartoittaa suorakulmaisesti vain osa asunnosta)
             elif i == (len(c_measure_list) - 1):
                 self._check_last_point(c_measure, corners)
             else:
                 new_corner_points = self._locate_point_d(c_measure, corners)
-                tasot = self._add_scratch_layers(new_corner_points, corners)
-                scratch1 = tasot[0]
-                scratch2 = tasot[1]
+                self._add_points(new_corner_points, corners, options_layer, opt_ids)
                 mb = QMessageBox()
                 mb.setText(
                     'Do you want to choose alternative 1 for corner point '
@@ -196,24 +188,28 @@ class RectangularMapping(SelectTool):
                 mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
                 ret = mb.exec()
                 if ret == QMessageBox.No:
-                    op = QgsVectorFileWriter.SaveVectorOptions()
-                    op.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
-                    QgsVectorFileWriter.writeAsVectorFormat(scratch2, polku, op)
-                    corners.append([new_corner_points[2], new_corner_points[3]])
-                elif ret == QMessageBox.Yes:
-                    op = QgsVectorFileWriter.SaveVectorOptions()
-                    op.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
-                    QgsVectorFileWriter.writeAsVectorFormat(scratch1, polku, op)
-                    corners.append([new_corner_points[0], new_corner_points[1]])
+                    if i == 1:
+                        poistettavat.append(opt_ids[3])
+                        corners.append([new_corner_points[2], new_corner_points[3]])
+                    else:
+                        poistettavat.append(opt_ids[2+(i*2-1)])
+                        corners.append([new_corner_points[2], new_corner_points[3]])
+                # eli kun ret == QMessageBox.Yes:
                 else:
-                    LOGGER.warning(
-                        tr("Ei haluta tänne!"),
-                        extra={"details": ""},
-                    )
-                    return
-                # Crashaa, jos uncommentoidaan nämä
-                # QgsProject.instance().removeMapLayer(scratch1.id())
-                # QgsProject.instance().removeMapLayer(scratch2.id())
+                    if i == 1:
+                        poistettavat.append(opt_ids[4])
+                        corners.append([new_corner_points[0], new_corner_points[1]])
+                    else:
+                        poistettavat.append(opt_ids[2+(i*2)])
+                        corners.append([new_corner_points[0], new_corner_points[1]])
+
+        options_layer.deleteFeatures(poistettavat)
+        options_layer.commitChanges()
+        iface.vectorLayerTools().stopEditing(options_layer)
+
+        op = QgsVectorFileWriter.SaveVectorOptions()
+        op.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
+        QgsVectorFileWriter.writeAsVectorFormat(options_layer, polku, op)
 
     def _calculate_parameters(
         self, line_coords: List[Decimal]
@@ -722,20 +718,12 @@ class RectangularMapping(SelectTool):
 
         return
 
-    def _add_scratch_layers(
+    def _add_points(
         self,
-        points: List[Decimal], corners: List[List[Decimal]]
-    ) -> List[QgsVectorLayer]:
+        points: List[Decimal], corners: List[List[Decimal]],
+        options_layer: QgsVectorLayer, opt_ids: List[int]
+    ) -> None:
         """Triggered when result layer needs to be generated."""
-        scratch_layer1 = QgsVectorLayer("Point", "temp", "memory")
-        crs = self.layer.crs()
-        scratch_layer1.setCrs(crs)
-        scratch_layer1_dataprovider = scratch_layer1.dataProvider()
-        scratch_layer1_dataprovider.addAttributes(
-            [QgsField("id", QVariant.String), QgsField("xcoord", QVariant.Double)]
-        )
-        scratch_layer1.updateFields()
-
         point = QgsPointXY(float(points[0]), float(points[1]))
         f1 = QgsFeature()
         f1.setGeometry(QgsGeometry.fromPointXY(point))
@@ -745,17 +733,15 @@ class RectangularMapping(SelectTool):
             f1.setAttributes(['Corner 2', 111.5])
         else:
             f1.setAttributes(['Corner ' + str(len(corners)+1) + ' V1', 111.5])
-        scratch_layer1_dataprovider.addFeature(f1)
-        scratch_layer1.updateExtents()
 
-        if len(corners) == 0:
-            scratch_layer1.setName(tr("B point alternative 1"))
-        elif len(corners) == 1:
-            scratch_layer1.setName(tr("Corner point 2"))
-        else:
-            scratch_layer1.setName(tr("Point alternative 1"))
-        scratch_layer1.renderer().symbol().setSize(2)
-        scratch_layer1.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
+        options_layer_dataprovider = options_layer.dataProvider()
+        options_layer_dataprovider.addFeature(f1)
+        options_layer.updateExtents()
+        opt_ids.append(f1.id())
+
+        options_layer.setName(tr("Point alternatives"))
+        options_layer.renderer().symbol().setSize(2)
+        options_layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
 
         layer_settings = QgsPalLayerSettings()
         text_format = QgsTextFormat()
@@ -780,21 +766,11 @@ class RectangularMapping(SelectTool):
 
         layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
 
-        scratch_layer1.setLabelsEnabled(True)
-        scratch_layer1.setLabeling(layer_settings)
-        scratch_layer1.triggerRepaint()
-
-        QgsProject.instance().addMapLayer(scratch_layer1)
+        options_layer.setLabelsEnabled(True)
+        options_layer.setLabeling(layer_settings)
+        options_layer.triggerRepaint()
 
         if len(points) > 2:
-            scratch_layer2 = QgsVectorLayer("Point", "temp", "memory")
-            scratch_layer2.setCrs(crs)
-            scratch_layer2_dataprovider = scratch_layer2.dataProvider()
-            scratch_layer2_dataprovider.addAttributes(
-                [QgsField("id", QVariant.String), QgsField("xcoord", QVariant.Double)]
-            )
-            scratch_layer2.updateFields()
-
             point2 = QgsPointXY(float(points[2]), float(points[3]))
             f2 = QgsFeature()
             f2.setGeometry(QgsGeometry.fromPointXY(point2))
@@ -802,23 +778,6 @@ class RectangularMapping(SelectTool):
                 f2.setAttributes(['B2', 233.0])
             else:
                 f2.setAttributes(['Corner ' + str(len(corners)+1) + ' V2', 233.0])
-            scratch_layer2_dataprovider.addFeature(f2)
-            scratch_layer2.updateExtents()
-
-            if len(corners) == 0:
-                scratch_layer2.setName(tr("B point alternative 2"))
-            else:
-                scratch_layer2.setName(tr("Point alternative 2"))
-            scratch_layer2.renderer().symbol().setSize(2)
-            scratch_layer2.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
-
-            scratch_layer2.setLabelsEnabled(True)
-            scratch_layer2.setLabeling(layer_settings)
-            scratch_layer2.triggerRepaint()
-
-            QgsProject.instance().addMapLayer(scratch_layer2)
-
-        if len(points) > 2:
-            return [scratch_layer1, scratch_layer2]
-        else:
-            return [scratch_layer1]
+            options_layer_dataprovider.addFeature(f2)
+            options_layer.updateExtents()
+            opt_ids.append(f2.id())
