@@ -86,6 +86,8 @@ class RectangularMapping(SelectTool):
         c_measures = [
             Decimal(measure.strip()) for measure in self.ui.get_c_measures().split(",")
         ]
+        if len(c_measures) == 2:
+            c_measures *= 2
 
         for i, c_measure in enumerate(c_measures):  # TODO: refactor loop
             if i == 0:
