@@ -25,6 +25,6 @@ class RectangularDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.textEdit: QTextEdit
         return self.textEdit.toPlainText()
 
-    def get_output_file(self) -> str:
+    def get_output_file_path(self) -> str:
         self.mQgsFileWidget: QgsFileWidget
         return self.mQgsFileWidget.filePath()
