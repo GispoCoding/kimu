@@ -17,7 +17,7 @@ from qgis.core import (
     QgsVectorLayerSimpleLabeling,
     QgsWkbTypes,
 )
-from qgis.gui import QgisInterface, QgsMapToolEmitPoint
+from qgis.gui import QgsMapToolEmitPoint
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor, QFont
 from qgis.utils import iface
@@ -33,9 +33,7 @@ LOGGER = setup_logger(plugin_name())
 
 
 class RectangularMapping(SelectTool):
-    def __init__(
-        self, iface: QgisInterface, dock_widget: RectangularDockWidget
-    ) -> None:
+    def __init__(self, dock_widget: RectangularDockWidget) -> None:
         super().__init__(iface)
         self.ui: RectangularDockWidget = dock_widget
 
