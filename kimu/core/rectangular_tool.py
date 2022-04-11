@@ -97,7 +97,7 @@ class RectangularMapping(SelectTool):
             point2 = QgsPointXY(line_feat[0])
         else:
             LOGGER.warning(tr("Please select start or end point of the "
-                              "selected property boundary line"
+                              "selected property boundary line."
                               ), extra={"details": ""})
             return
 
@@ -121,21 +121,21 @@ class RectangularMapping(SelectTool):
         corners: List[List[Decimal]]
         corners = []
 
-        polku = self.ui.get_output_file()
+        path = self.ui.get_output_file()
 
         options_layer = QgsVectorLayer("Point", "temp", "memory")
         crs = self.layer.crs()
         options_layer.setCrs(crs)
         options_layer_dataprovider = options_layer.dataProvider()
         options_layer_dataprovider.addAttributes(
-            [QgsField("id", QVariant.String), QgsField("xcoord", QVariant.Double)]
+            [QgsField("id", QVariant.String)]
         )
         options_layer.updateFields()
 
         opt_ids: List[int]
         opt_ids = []
-        poistettavat: List[int]
-        poistettavat = []
+        to_be_deleted: List[int]
+        to_be_deleted = []
 
         self._add_points(points_b, corners, options_layer, opt_ids)
 
@@ -145,17 +145,17 @@ class RectangularMapping(SelectTool):
 
         mb = QMessageBox()
         mb.setText(
-            'Do you want to choose alternative 1 for corner point '
+            'Do you want to choose option 1 for corner point '
             + str(len(corners) + 1) + '?'
         )
         mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
         ret = mb.exec()
         if ret == QMessageBox.No:
-            poistettavat.append(opt_ids[0])
+            to_be_deleted.append(opt_ids[0])
             corners.append([points_b[2], points_b[3]])
-        # eli kun ret == QMessageBox.Yes:
+        # i.e. when ret == QMessageBox.Yes:
         else:
-            poistettavat.append(opt_ids[1])
+            to_be_deleted.append(opt_ids[1])
             corners.append([points_b[0], points_b[1]])
 
         point_b: List[Decimal]
@@ -165,51 +165,55 @@ class RectangularMapping(SelectTool):
         c_measure_list = self.ui.get_c_measures().split(",")
 
         for i in range(len(c_measure_list)):
-            # Määritetään toinen nurkkapiste, joka muista poiketen
-            # sijaitsee samalla suoralla kuin ensimmäinen nurkkapiste
             c_measure = Decimal(c_measure_list[i])
+            # Let's map the second corner point which will be
+            # located in the extension of the line feature
+            # connecting point_a and point_b
             if i == 0:
                 point_c = self._locate_point_c(c_measure, point_a, point_b)
                 self._add_points(point_c, corners, options_layer, opt_ids)
                 corners.append([point_c[0], point_c[1]])
-            # TURHA FUNKTIO, POISTETAAN! Ei ole mitaan syyta vaatia, etta
-            # paadyttaisiin aina rakennuksen aloituspisteeseen
-            # (voidaan haluta kartoittaa suorakulmaisesti vain osa asunnosta)
-            elif i == (len(c_measure_list) - 1):
-                self._check_last_point(c_measure, corners)
+            # Let's map the rest of the rectangular corner points
+            # (they will be located perpendicularly with respect to
+            # the line feature connecting two last elements of
+            # the corners list)
             else:
                 new_corner_points = self._locate_point_d(c_measure, corners)
                 self._add_points(new_corner_points, corners, options_layer, opt_ids)
                 mb = QMessageBox()
                 mb.setText(
-                    'Do you want to choose alternative 1 for corner point '
+                    'Do you want to choose option 1 for corner point '
                     + str(len(corners) + 1) + '?'
                 )
                 mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
                 ret = mb.exec()
                 if ret == QMessageBox.No:
-                    if i == 1:
-                        poistettavat.append(opt_ids[3])
-                        corners.append([new_corner_points[2], new_corner_points[3]])
-                    else:
-                        poistettavat.append(opt_ids[2+(i*2-1)])
-                        corners.append([new_corner_points[2], new_corner_points[3]])
-                # eli kun ret == QMessageBox.Yes:
+                    # Let's check that we point we are going to add to corners
+                    # list is a new one (we do not want to generate duplicates)
+                    if [new_corner_points[2], new_corner_points[3]] not in corners:
+                        if i == 1:
+                            to_be_deleted.append(opt_ids[3])
+                            corners.append([new_corner_points[2], new_corner_points[3]])
+                        else:
+                            to_be_deleted.append(opt_ids[2+(i*2-1)])
+                            corners.append([new_corner_points[2], new_corner_points[3]])
+                # i.e. when ret == QMessageBox.Yes:
                 else:
-                    if i == 1:
-                        poistettavat.append(opt_ids[4])
-                        corners.append([new_corner_points[0], new_corner_points[1]])
-                    else:
-                        poistettavat.append(opt_ids[2+(i*2)])
-                        corners.append([new_corner_points[0], new_corner_points[1]])
+                    if [new_corner_points[0], new_corner_points[1]] not in corners:
+                        if i == 1:
+                            to_be_deleted.append(opt_ids[4])
+                            corners.append([new_corner_points[0], new_corner_points[1]])
+                        else:
+                            to_be_deleted.append(opt_ids[2+(i*2)])
+                            corners.append([new_corner_points[0], new_corner_points[1]])
 
-        options_layer.deleteFeatures(poistettavat)
+        options_layer.deleteFeatures(to_be_deleted)
         options_layer.commitChanges()
         iface.vectorLayerTools().stopEditing(options_layer)
 
         op = QgsVectorFileWriter.SaveVectorOptions()
         op.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
-        QgsVectorFileWriter.writeAsVectorFormat(options_layer, polku, op)
+        QgsVectorFileWriter.writeAsVectorFormat(options_layer, path, op)
 
     def _calculate_parameters(
         self, line_coords: List[Decimal]
@@ -217,7 +221,6 @@ class RectangularMapping(SelectTool):
         """Calculate values for a, b and c parameters"""
         # a_measure is given in crs units (meters for EPSG: 3067)
         a_measure = Decimal(self.ui.get_a_measure())
-        # LISAA SELITYS!
         a = (
             (line_coords[2]) ** Decimal("2.0")
             - Decimal("2.0") * line_coords[0] * line_coords[2]
@@ -291,7 +294,7 @@ class RectangularMapping(SelectTool):
             )
             return []
 
-        # Computing the possible coordinates for a point
+        # Coordinates of the first possible solution for point_a
         x_a1 = (
             (-parameters[1] + Decimal(math.sqrt(sqrt_in)))
             / (Decimal("2.0") * parameters[0])
@@ -306,6 +309,7 @@ class RectangularMapping(SelectTool):
             ) / (line_coords[2] - line_coords[0])
         )
 
+        # Coordinates of the second possible solution for point_a
         x_a2 = (
             (-parameters[1] - Decimal(math.sqrt(sqrt_in)))
             / (Decimal("2.0") * parameters[0])
@@ -323,7 +327,7 @@ class RectangularMapping(SelectTool):
         bound_y = sorted([line_coords[1], line_coords[3]])
 
         # Select the correct solution point (the one existing
-        # at the property boundary line)
+        # at the property boundary line selected by the user)
         if (
             x_a1 > bound_x[0] and x_a1 < bound_x[1]
             and y_a1 > bound_y[0] and y_a1 < bound_y[1]
@@ -355,7 +359,7 @@ class RectangularMapping(SelectTool):
         x_a = point_a[0]
         y_a = point_a[1]
 
-        # Coordinates of the first solution point
+        # Coordinates of the first possible solution point
         x_b1 = (
             (line_coords[3] * b_measure * Decimal(math.sqrt(
                 a2 ** Decimal("2.0") + b2 ** Decimal("2.0")
@@ -379,7 +383,7 @@ class RectangularMapping(SelectTool):
             / (line_coords[3] - line_coords[1])
         )
 
-        # Coordinates of the second solution point
+        # Coordinates of the second possible solution point
         x_b2 = (
             (-line_coords[3] * b_measure * Decimal(math.sqrt(
                 a2 ** Decimal("2.0") + b2 ** Decimal("2.0")
@@ -403,7 +407,7 @@ class RectangularMapping(SelectTool):
             / (line_coords[3] - line_coords[1])
         )
 
-        # Check that the intersection point(s) lie(s) in the
+        # Check that the solution points lie in the
         # map canvas extent
         extent = iface.mapCanvas().extent()
 
@@ -414,7 +418,7 @@ class RectangularMapping(SelectTool):
             or y_b1 > extent.yMaximum()
         ):
             LOGGER.warning(
-                tr("Solution point 1 lies outside of the map canvas!"),
+                tr("Point B opt 1 lies outside of the map canvas!"),
                 extra={"details": ""},
             )
             return []
@@ -426,7 +430,7 @@ class RectangularMapping(SelectTool):
             or y_b2 > extent.yMaximum()
         ):
             LOGGER.warning(
-                tr("Solution point 2 lies outside of the map canvas!"),
+                tr("Point B opt 2 lies outside of the map canvas!"),
                 extra={"details": ""},
             )
             return []
@@ -438,8 +442,7 @@ class RectangularMapping(SelectTool):
     def _locate_point_c(
         self, c_measure: Decimal, point_a: List[Decimal], point_b: List[Decimal]
     ) -> List[Decimal]:
-        """Determine the coordinates of point_c going through
-        two points."""
+        """Determine the coordinates of corner point 2."""
 
         a = (
             Decimal("1.0")
@@ -479,7 +482,7 @@ class RectangularMapping(SelectTool):
             )
             return []
 
-        # Computing the possible coordinates for a point
+        # Computing the possible coordinates for corner point 2
         x_c1 = (
             (-b + Decimal(math.sqrt(sqrt_in))) / (Decimal("2.0") * a)
         )
@@ -489,7 +492,7 @@ class RectangularMapping(SelectTool):
             * (x_c1 - point_a[0]) + point_a[1]
         )
 
-        # Computing the possible coordinates for a point
+        # Computing the possible coordinates for corner point 2
         x_c2 = (
             (-b - Decimal(math.sqrt(sqrt_in))) / (Decimal("2.0") * a)
         )
@@ -499,9 +502,9 @@ class RectangularMapping(SelectTool):
             * (x_c2 - point_a[0]) + point_a[1]
         )
 
-        # Tunnistetaaan kumpi pisteistä on kauempana point_a:sta
-        # oletus: a- ja b-mittojen avulla on paikannettu kiinteistörajaa
-        # lähimpänä sijaitseva nurkkapiste
+        # Let's find out which solution point has more distance to
+        # point_b. Assumption: the corner point located via a and b
+        # measures will be the closest to the boundary line
         d1 = (
             math.sqrt((x_c1-point_a[0]) ** Decimal("2.0")
                       + (y_c1-point_a[1]) ** Decimal("2.0"))
@@ -521,18 +524,18 @@ class RectangularMapping(SelectTool):
     def _locate_point_d(
         self, d_measure: Decimal, corners: List[List[Decimal]]
     ) -> List[Decimal]:
-        """Determine the coordinates of the point belonging to the line which is
-        orthogonal to the line determined by two latest corner points."""
+        """Determine the coordinates of the corner point belonging to the line
+        which is orthogonal to the line determined by two latest corner points."""
 
         point1 = corners[-2]
         point2 = corners[-1]
 
-        # Suoran yhtälö kahden pisteen kautta
+        # Analytical goemetry: two-point form of a line
         a2 = (point2[1] - point1[1]) / (point2[0] - point1[0])
         b2 = Decimal("-1.0")
         c2 = point1[1] - ((point2[1] - point1[1]) / (point2[0] - point1[0])) * point1[0]
 
-        # Coordinates of the first solution point
+        # Coordinates of the first possible solution point
         x_d1 = (
             (point2[1] * d_measure * Decimal(math.sqrt(
                 a2 ** Decimal("2.0") + b2 ** Decimal("2.0")
@@ -556,7 +559,7 @@ class RectangularMapping(SelectTool):
             / (point2[1] - point1[1])
         )
 
-        # Coordinates of the second solution point
+        # Coordinates of the second possible solution point
         x_d2 = (
             (-point2[1] * d_measure * Decimal(math.sqrt(
                 a2 ** Decimal("2.0") + b2 ** Decimal("2.0")
@@ -580,7 +583,7 @@ class RectangularMapping(SelectTool):
             / (point2[1] - point1[1])
         )
 
-        # Check that the intersection point(s) lie(s) in the
+        # Check that the corner points lie in the
         # map canvas extent
         extent = iface.mapCanvas().extent()
 
@@ -612,134 +615,29 @@ class RectangularMapping(SelectTool):
 
         return points_d_res
 
-    def _check_last_point(
-        self, last_measure: Decimal, corners: List[List[Decimal]]
-    ) -> None:
-        """Check that by moving the last disctance orthogonally we end up into the
-        point_b (should be first element on corners list)."""
-
-        point1 = corners[-2]
-        point2 = corners[-1]
-
-        # Suoran yhtälö kahden pisteen kautta
-        a2 = (point2[1] - point1[1]) / (point2[0] - point1[0])
-        b2 = Decimal("-1.0")
-        c2 = point1[1] - ((point2[1] - point1[1]) / (point2[0] - point1[0])) * point1[0]
-
-        # Coordinates of the first solution point
-        x_last1 = (
-            (point2[1] * last_measure * Decimal(math.sqrt(
-                a2 ** Decimal("2.0") + b2 ** Decimal("2.0")
-            ))
-              - point1[1] * last_measure * Decimal(math.sqrt(
-                    a2 ** Decimal("2.0") + b2 ** Decimal("2.0")
-                )) - b2 * point2[1] * point2[1]
-              + b2 * point2[1] * point1[1]
-              - b2 * point2[0] ** Decimal("2.0") + b2 * point2[0] * point1[0]
-              - c2 * point2[1] + c2 * point1[1]
-              )
-            / (a2 * point2[1] - a2 * point1[1]
-               - b2 * point2[0] + b2 * point1[0])
-        )
-
-        y_last1 = (
-            (point2[1] ** Decimal("2.0") - point2[1] * point1[1]
-             - Decimal(x_last1) * point2[0]
-             + Decimal(x_last1) * point1[0]
-             + point2[0] ** Decimal("2.0") - point2[0] * point1[0])
-            / (point2[1] - point1[1])
-        )
-
-        # Coordinates of the second solution point
-        x_last2 = (
-            (-point2[1] * last_measure * Decimal(math.sqrt(
-                a2 ** Decimal("2.0") + b2 ** Decimal("2.0")
-            ))
-             + point1[1] * last_measure * Decimal(math.sqrt(
-                    a2 ** Decimal("2.0") + b2 ** Decimal("2.0")
-                )) - b2 * point2[1] ** Decimal("2.0")
-             + b2 * point2[1] * point1[1]
-             - b2 * point2[0] ** Decimal("2.0") + b2 * point2[0] * point1[0]
-             - c2 * point2[1] + c2 * point1[1]
-             )
-            / (a2 * point2[1] - a2 * point1[1]
-               - b2 * point2[0] + b2 * point1[0])
-        )
-
-        y_last2 = (
-            (point2[1] ** Decimal("2.0") - point2[1] * point1[1]
-             - Decimal(x_last2) * point2[0]
-             + Decimal(x_last2) * point1[0]
-             + point2[0] ** Decimal("2.0") - point2[0] * point1[0])
-            / (point2[1] - point1[1])
-        )
-
-        # Check that the intersection point(s) lie(s) in the
-        # map canvas extent
-        extent = iface.mapCanvas().extent()
-
-        if (
-            x_last1 < extent.xMinimum()
-            or x_last1 > extent.xMaximum()
-            or y_last1 < extent.yMinimum()
-            or y_last1 > extent.yMaximum()
-        ):
-            LOGGER.warning(
-                tr("Solution point 1 lies outside of the map canvas!"),
-                extra={"details": ""},
-            )
-            return
-
-        if (
-            x_last2 < extent.xMinimum()
-            or x_last2 > extent.xMaximum()
-            or y_last2 < extent.yMinimum()
-            or y_last2 > extent.yMaximum()
-        ):
-            LOGGER.warning(
-                tr("Solution point 2 lies outside of the map canvas!"),
-                extra={"details": ""},
-            )
-            return
-
-        # Huomaa, että viimeisellä etäisyydellä ei ole mitään väliä,
-        # sillä sen mukaista pistettä ei ikinä piirretä kartalle!
-        # Oletetaan, että viimeinen syötetty sivun pituus matchaa tarpeisiin
-        if (
-            (int(x_last1) != int(corners[0][0]) and int(x_last2) != int(corners[0][0]))
-            or
-            (int(y_last1) != int(corners[0][1]) and int(y_last2) != int(corners[0][1]))
-        ):
-            LOGGER.warning(
-                tr("Rectangular mapping failed!"),
-                extra={"details": ""},
-            )
-            return
-
-        return
-
     def _add_points(
         self,
         points: List[Decimal], corners: List[List[Decimal]],
         options_layer: QgsVectorLayer, opt_ids: List[int]
     ) -> None:
-        """Triggered when result layer needs to be generated."""
+        """Triggered when scratch layers need to be generated."""
+
         point = QgsPointXY(float(points[0]), float(points[1]))
         f1 = QgsFeature()
         f1.setGeometry(QgsGeometry.fromPointXY(point))
         if len(corners) == 0:
-            f1.setAttributes(['B1', 111.5])
+            f1.setAttributes(['Point B opt 1'])
         elif len(corners) == 1:
-            f1.setAttributes(['Corner 2', 111.5])
+            f1.setAttributes(['Corner 2'])
         else:
-            f1.setAttributes(['Corner ' + str(len(corners)+1) + ' V1', 111.5])
+            f1.setAttributes(['Corner ' + str(len(corners)+1) + ' opt 1'])
 
         options_layer_dataprovider = options_layer.dataProvider()
         options_layer_dataprovider.addFeature(f1)
         options_layer.updateExtents()
         opt_ids.append(f1.id())
 
-        options_layer.setName(tr("Point alternatives"))
+        options_layer.setName(tr("Corner point options"))
         options_layer.renderer().symbol().setSize(2)
         options_layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
 
@@ -775,9 +673,9 @@ class RectangularMapping(SelectTool):
             f2 = QgsFeature()
             f2.setGeometry(QgsGeometry.fromPointXY(point2))
             if len(corners) == 0:
-                f2.setAttributes(['B2', 233.0])
+                f2.setAttributes(['Point B opt 2'])
             else:
-                f2.setAttributes(['Corner ' + str(len(corners)+1) + ' V2', 233.0])
+                f2.setAttributes(['Corner ' + str(len(corners)+1) + ' opt 2'])
             options_layer_dataprovider.addFeature(f2)
             options_layer.updateExtents()
             opt_ids.append(f2.id())

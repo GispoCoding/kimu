@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Rectangular mapping of a point</string>
+   <string>Rectangular mapping of points with respect to the line</string>
   </property>
   <widget class="QWidget" name="dockWidgetContents">
    <layout class="QHBoxLayout" name="horizontalLayout">
@@ -51,7 +51,7 @@
       <item row="4" column="0">
        <widget class="QLabel" name="label_3">
         <property name="text">
-         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;List of C-measures&lt;/p&gt;&lt;p&gt;(in crs units, separated by comma)&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;List of the building wall widths&lt;/p&gt;&lt;p&gt;to be mapped rectangularly&lt;/p&gt;&lt;p&gt;(in crs units, separated by comma)&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
        </widget>
       </item>
@@ -61,7 +61,7 @@
       <item row="6" column="0">
        <widget class="QLabel" name="label_4">
         <property name="text">
-         <string>Select output file</string>
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Select output file (crs of the&lt;/p&gt;&lt;p&gt;file should match with crs &lt;/p&gt;&lt;p&gt;of the utilized line layer)&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
        </widget>
       </item>
