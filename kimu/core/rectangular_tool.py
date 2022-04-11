@@ -47,34 +47,29 @@ class RectangularMapping(SelectTool):
             self.layer = layer
             self.setLayer(self.layer)
 
-    # fmt: off
-    def canvasPressEvent(  # noqa: N802
-        self, event: QgsMapToolEmitPoint
-    ) -> None:
-        # fmt: on
+    def canvasPressEvent(self, event: QgsMapToolEmitPoint) -> None:  # noqa: N802
         """Canvas click event."""
         if self.iface.activeLayer() != self.layer:
-            LOGGER.warning(tr("Please select a line layer"),
-                           extra={"details": ""})
+            LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
             return
 
         if QgsWkbTypes.isSingleType(
-            list(
-                self.iface.activeLayer().getFeatures()
-            )[0].geometry().wkbType()
+            list(self.iface.activeLayer().getFeatures())[0].geometry().wkbType()
         ):
             pass
         else:
             LOGGER.warning(
-                tr("Please select a line layer with "
-                   "LineString geometries (instead "
-                   "of MultiLineString geometries)"),
-                extra={"details": ""})
+                tr(
+                    "Please select a line layer with "
+                    "LineString geometries (instead "
+                    "of MultiLineString geometries)"
+                ),
+                extra={"details": ""},
+            )
             return
 
         if len(self.iface.activeLayer().selectedFeatures()) != 1:
-            LOGGER.warning(tr("Please select only one line"),
-                           extra={"details": ""})
+            LOGGER.warning(tr("Please select only one line"), extra={"details": ""})
             return
 
         geometry = self.iface.activeLayer().selectedFeatures()[0].geometry()
@@ -94,9 +89,13 @@ class RectangularMapping(SelectTool):
             point1 = QgsPointXY(line_feat[-1])
             point2 = QgsPointXY(line_feat[0])
         else:
-            LOGGER.warning(tr("Please select start or end point of the "
-                              "selected property boundary line."
-                              ), extra={"details": ""})
+            LOGGER.warning(
+                tr(
+                    "Please select start or end point of the "
+                    "selected property boundary line."
+                ),
+                extra={"details": ""},
+            )
             return
 
         line_coords = [
@@ -125,9 +124,7 @@ class RectangularMapping(SelectTool):
         crs = self.layer.crs()
         options_layer.setCrs(crs)
         options_layer_dataprovider = options_layer.dataProvider()
-        options_layer_dataprovider.addAttributes(
-            [QgsField("id", QVariant.String)]
-        )
+        options_layer_dataprovider.addAttributes([QgsField("id", QVariant.String)])
         options_layer.updateFields()
 
         opt_ids: List[int]
@@ -143,8 +140,9 @@ class RectangularMapping(SelectTool):
 
         mb = QMessageBox()
         mb.setText(
-            'Do you want to choose option 1 for corner point '
-            + str(len(corners) + 1) + '?'
+            "Do you want to choose option 1 for corner point "
+            + str(len(corners) + 1)
+            + "?"
         )
         mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
         ret = mb.exec()
@@ -180,8 +178,9 @@ class RectangularMapping(SelectTool):
                 self._add_points(new_corner_points, corners, options_layer, opt_ids)
                 mb = QMessageBox()
                 mb.setText(
-                    'Do you want to choose option 1 for corner point '
-                    + str(len(corners) + 1) + '?'
+                    "Do you want to choose option 1 for corner point "
+                    + str(len(corners) + 1)
+                    + "?"
                 )
                 mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
                 ret = mb.exec()
@@ -193,7 +192,7 @@ class RectangularMapping(SelectTool):
                             to_be_deleted.append(opt_ids[3])
                             corners.append([new_corner_points[2], new_corner_points[3]])
                         else:
-                            to_be_deleted.append(opt_ids[2+(i*2-1)])
+                            to_be_deleted.append(opt_ids[2 + (i * 2 - 1)])
                             corners.append([new_corner_points[2], new_corner_points[3]])
                 # i.e. when ret == QMessageBox.Yes:
                 else:
@@ -202,7 +201,7 @@ class RectangularMapping(SelectTool):
                             to_be_deleted.append(opt_ids[4])
                             corners.append([new_corner_points[0], new_corner_points[1]])
                         else:
-                            to_be_deleted.append(opt_ids[2+(i*2)])
+                            to_be_deleted.append(opt_ids[2 + (i * 2)])
                             corners.append([new_corner_points[0], new_corner_points[1]])
 
         options_layer.deleteFeatures(to_be_deleted)
@@ -213,9 +212,7 @@ class RectangularMapping(SelectTool):
         op.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
         QgsVectorFileWriter.writeAsVectorFormat(options_layer, path, op)
 
-    def _calculate_parameters(
-        self, line_coords: List[Decimal]
-    ) -> List[Decimal]:
+    def _calculate_parameters(self, line_coords: List[Decimal]) -> List[Decimal]:
         """Calculate values for a, b and c parameters"""
         # a_measure is given in crs units (meters for EPSG: 3067)
         a_measure = Decimal(self.ui.get_a_measure())
@@ -228,47 +225,29 @@ class RectangularMapping(SelectTool):
             + (line_coords[1]) ** Decimal("2.0")
         )
         b = (
-            -Decimal("2.0")
-            * (line_coords[2]) ** Decimal("2.0")
-            * line_coords[0]
-            + Decimal("4.0")
-            * (line_coords[0]) ** Decimal("2.0")
-            * line_coords[2]
-            - Decimal("2.0")
-            * (line_coords[0]) ** Decimal("3.0")
-            - Decimal("2.0")
-            * (line_coords[3]) ** Decimal("2.0")
-            * line_coords[0]
-            + Decimal("4.0")
-            * line_coords[0] * line_coords[1]
-            * line_coords[3]
-            - Decimal("2.0")
-            * (line_coords[1]) ** Decimal("2.0")
-            * line_coords[0]
+            -Decimal("2.0") * (line_coords[2]) ** Decimal("2.0") * line_coords[0]
+            + Decimal("4.0") * (line_coords[0]) ** Decimal("2.0") * line_coords[2]
+            - Decimal("2.0") * (line_coords[0]) ** Decimal("3.0")
+            - Decimal("2.0") * (line_coords[3]) ** Decimal("2.0") * line_coords[0]
+            + Decimal("4.0") * line_coords[0] * line_coords[1] * line_coords[3]
+            - Decimal("2.0") * (line_coords[1]) ** Decimal("2.0") * line_coords[0]
         )
         c = (
-            - a_measure ** Decimal("2.0")
-            * (line_coords[2]) ** Decimal("2.0")
+            -(a_measure ** Decimal("2.0")) * (line_coords[2]) ** Decimal("2.0")
             + Decimal("2.0")
             * a_measure ** Decimal("2.0")
             * line_coords[0]
             * line_coords[2]
-            - a_measure ** Decimal("2.0")
-            * (line_coords[0]) ** Decimal("2.0")
-            + (line_coords[0]) ** Decimal("2.0")
-            * (line_coords[2]) ** Decimal("2.0")
-            - Decimal("2.0")
-            * (line_coords[0]) ** Decimal("3.0")
-            * line_coords[2]
+            - a_measure ** Decimal("2.0") * (line_coords[0]) ** Decimal("2.0")
+            + (line_coords[0]) ** Decimal("2.0") * (line_coords[2]) ** Decimal("2.0")
+            - Decimal("2.0") * (line_coords[0]) ** Decimal("3.0") * line_coords[2]
             + (line_coords[0]) ** Decimal("4.0")
-            + (line_coords[3]) ** Decimal("2.0")
-            * (line_coords[0]) ** Decimal("2.0")
+            + (line_coords[3]) ** Decimal("2.0") * (line_coords[0]) ** Decimal("2.0")
             - Decimal("2.0")
             * line_coords[1]
             * line_coords[3]
             * (line_coords[0]) ** Decimal("2.0")
-            + (line_coords[1]) ** Decimal("2.0")
-            * (line_coords[0]) ** Decimal("2.0")
+            + (line_coords[1]) ** Decimal("2.0") * (line_coords[0]) ** Decimal("2.0")
         )
         result = [a, b, c]
         return result
@@ -293,33 +272,28 @@ class RectangularMapping(SelectTool):
             return []
 
         # Coordinates of the first possible solution for point_a
-        x_a1 = (
-            (-parameters[1] + Decimal(math.sqrt(sqrt_in)))
-            / (Decimal("2.0") * parameters[0])
+        x_a1 = (-parameters[1] + Decimal(math.sqrt(sqrt_in))) / (
+            Decimal("2.0") * parameters[0]
         )
 
         y_a1 = (
-            (
-                x_a1 * line_coords[3]
-                - line_coords[0] * line_coords[3]
-                - x_a1 * line_coords[1]
-                + line_coords[2] * line_coords[1]
-            ) / (line_coords[2] - line_coords[0])
-        )
+            x_a1 * line_coords[3]
+            - line_coords[0] * line_coords[3]
+            - x_a1 * line_coords[1]
+            + line_coords[2] * line_coords[1]
+        ) / (line_coords[2] - line_coords[0])
 
         # Coordinates of the second possible solution for point_a
-        x_a2 = (
-            (-parameters[1] - Decimal(math.sqrt(sqrt_in)))
-            / (Decimal("2.0") * parameters[0])
+        x_a2 = (-parameters[1] - Decimal(math.sqrt(sqrt_in))) / (
+            Decimal("2.0") * parameters[0]
         )
 
         y_a2 = (
-            (x_a2 * line_coords[3]
-             - line_coords[0] * line_coords[3]
-             - x_a2 * line_coords[1]
-             + line_coords[2] * line_coords[1])
-            / (line_coords[2] - line_coords[0])
-        )
+            x_a2 * line_coords[3]
+            - line_coords[0] * line_coords[3]
+            - x_a2 * line_coords[1]
+            + line_coords[2] * line_coords[1]
+        ) / (line_coords[2] - line_coords[0])
 
         bound_x = sorted([line_coords[0], line_coords[2]])
         bound_y = sorted([line_coords[1], line_coords[3]])
@@ -327,8 +301,10 @@ class RectangularMapping(SelectTool):
         # Select the correct solution point (the one existing
         # at the property boundary line selected by the user)
         if (
-            x_a1 > bound_x[0] and x_a1 < bound_x[1]
-            and y_a1 > bound_y[0] and y_a1 < bound_y[1]
+            x_a1 > bound_x[0]
+            and x_a1 < bound_x[1]
+            and y_a1 > bound_y[0]
+            and y_a1 < bound_y[1]
         ):
             x_a = x_a1
             y_a = y_a1
@@ -359,51 +335,63 @@ class RectangularMapping(SelectTool):
 
         # Coordinates of the first possible solution point
         x_b1 = (
-            (line_coords[3] * b_measure * Decimal(math.sqrt(
-                a2 ** Decimal("2.0") + b2 ** Decimal("2.0")
-            ))
-              - line_coords[1] * b_measure * Decimal(math.sqrt(
-                    a2 ** Decimal("2.0") + b2 ** Decimal("2.0")
-                )) - b2 * y_a * line_coords[3]
-              + b2 * y_a * line_coords[1]
-              - b2 * x_a * line_coords[2] + b2 * x_a * line_coords[0]
-              - c2 * line_coords[3] + c2 * line_coords[1]
-              )
-            / (a2 * line_coords[3] - a2 * line_coords[1]
-               - b2 * line_coords[2] + b2 * line_coords[0])
+            line_coords[3]
+            * b_measure
+            * Decimal(math.sqrt(a2 ** Decimal("2.0") + b2 ** Decimal("2.0")))
+            - line_coords[1]
+            * b_measure
+            * Decimal(math.sqrt(a2 ** Decimal("2.0") + b2 ** Decimal("2.0")))
+            - b2 * y_a * line_coords[3]
+            + b2 * y_a * line_coords[1]
+            - b2 * x_a * line_coords[2]
+            + b2 * x_a * line_coords[0]
+            - c2 * line_coords[3]
+            + c2 * line_coords[1]
+        ) / (
+            a2 * line_coords[3]
+            - a2 * line_coords[1]
+            - b2 * line_coords[2]
+            + b2 * line_coords[0]
         )
 
         y_b1 = (
-            (y_a * line_coords[3] - y_a * line_coords[1]
-             - Decimal(x_b1) * line_coords[2]
-             + Decimal(x_b1) * line_coords[0]
-             + x_a * line_coords[2] - x_a * line_coords[0])
-            / (line_coords[3] - line_coords[1])
-        )
+            y_a * line_coords[3]
+            - y_a * line_coords[1]
+            - Decimal(x_b1) * line_coords[2]
+            + Decimal(x_b1) * line_coords[0]
+            + x_a * line_coords[2]
+            - x_a * line_coords[0]
+        ) / (line_coords[3] - line_coords[1])
 
         # Coordinates of the second possible solution point
         x_b2 = (
-            (-line_coords[3] * b_measure * Decimal(math.sqrt(
-                a2 ** Decimal("2.0") + b2 ** Decimal("2.0")
-            ))
-             + line_coords[1] * b_measure * Decimal(math.sqrt(
-                    a2 ** Decimal("2.0") + b2 ** Decimal("2.0")
-                )) - b2 * y_a * line_coords[3]
-             + b2 * y_a * line_coords[1]
-             - b2 * x_a * line_coords[2] + b2 * x_a * line_coords[0]
-             - c2 * line_coords[3] + c2 * line_coords[1]
-             )
-            / (a2 * line_coords[3] - a2 * line_coords[1]
-               - b2 * line_coords[2] + b2 * line_coords[0])
+            -line_coords[3]
+            * b_measure
+            * Decimal(math.sqrt(a2 ** Decimal("2.0") + b2 ** Decimal("2.0")))
+            + line_coords[1]
+            * b_measure
+            * Decimal(math.sqrt(a2 ** Decimal("2.0") + b2 ** Decimal("2.0")))
+            - b2 * y_a * line_coords[3]
+            + b2 * y_a * line_coords[1]
+            - b2 * x_a * line_coords[2]
+            + b2 * x_a * line_coords[0]
+            - c2 * line_coords[3]
+            + c2 * line_coords[1]
+        ) / (
+            a2 * line_coords[3]
+            - a2 * line_coords[1]
+            - b2 * line_coords[2]
+            + b2 * line_coords[0]
         )
 
         y_b2 = (
-            (y_a * line_coords[3] - y_a * line_coords[1]
-             - Decimal(x_b2) * line_coords[2]
-             + Decimal(x_b2) * line_coords[0]
-             + x_a * line_coords[2] - x_a * line_coords[0])
-            / (line_coords[3] - line_coords[1])
-        )
+            y_a * line_coords[3]
+            - y_a * line_coords[1]
+            - Decimal(x_b2) * line_coords[2]
+            + Decimal(x_b2) * line_coords[0]
+            + x_a * line_coords[2]
+            - x_a * line_coords[0]
+        ) / (line_coords[3] - line_coords[1])
 
         # Check that the solution points lie in the
         # map canvas extent
@@ -442,37 +430,32 @@ class RectangularMapping(SelectTool):
     ) -> List[Decimal]:
         """Determine the coordinates of corner point 2."""
 
-        a = (
-            Decimal("1.0")
-            + (
-                (point_b[1] - point_a[1]) / (point_b[0] - point_a[0])
-            ) ** Decimal("2.0")
-        )
+        a = Decimal("1.0") + (
+            (point_b[1] - point_a[1]) / (point_b[0] - point_a[0])
+        ) ** Decimal("2.0")
         b = (
-            - Decimal("2.0") * point_b[0]
-            - Decimal("2.0") * point_a[0] * (
-                (point_b[1] - point_a[1]) / (point_b[0] - point_a[0])
-            ) ** Decimal("2.0")
-            + Decimal("2.0") * (
-                (point_b[1] - point_a[1]) / (point_b[0] - point_a[0])
-            ) * (point_a[1] - point_b[1])
+            -Decimal("2.0") * point_b[0]
+            - Decimal("2.0")
+            * point_a[0]
+            * ((point_b[1] - point_a[1]) / (point_b[0] - point_a[0])) ** Decimal("2.0")
+            + Decimal("2.0")
+            * ((point_b[1] - point_a[1]) / (point_b[0] - point_a[0]))
+            * (point_a[1] - point_b[1])
         )
         c = (
-            - c_measure ** Decimal("2.0") + (point_a[1] - point_b[1]) ** Decimal("2.0")
-            - Decimal("2.0") * (
-                (point_b[1] - point_a[1]) / (point_b[0] - point_a[0])
-            ) * (point_a[1] - point_b[1]) * point_a[0]
+            -(c_measure ** Decimal("2.0"))
+            + (point_a[1] - point_b[1]) ** Decimal("2.0")
+            - Decimal("2.0")
+            * ((point_b[1] - point_a[1]) / (point_b[0] - point_a[0]))
+            * (point_a[1] - point_b[1])
+            * point_a[0]
             + point_b[0] ** Decimal("2.0")
-            + point_a[0] ** Decimal("2.0") * (
-                (point_b[1] - point_a[1]) / (point_b[0] - point_a[0])
-            ) ** Decimal("2.0")
+            + point_a[0] ** Decimal("2.0")
+            * ((point_b[1] - point_a[1]) / (point_b[0] - point_a[0])) ** Decimal("2.0")
         )
 
         # Check that the solution exists
-        sqrt_in = (
-            b ** Decimal("2.0")
-            - Decimal("4.0") * a * c
-        )
+        sqrt_in = b ** Decimal("2.0") - Decimal("4.0") * a * c
         if sqrt_in < 0.0 or a == 0.0:
             LOGGER.warning(
                 tr("Solution point does not exist!"),
@@ -481,35 +464,29 @@ class RectangularMapping(SelectTool):
             return []
 
         # Computing the possible coordinates for corner point 2
-        x_c1 = (
-            (-b + Decimal(math.sqrt(sqrt_in))) / (Decimal("2.0") * a)
-        )
+        x_c1 = (-b + Decimal(math.sqrt(sqrt_in))) / (Decimal("2.0") * a)
 
-        y_c1 = (
-            ((point_b[1] - point_a[1]) / (point_b[0] - point_a[0]))
-            * (x_c1 - point_a[0]) + point_a[1]
-        )
+        y_c1 = ((point_b[1] - point_a[1]) / (point_b[0] - point_a[0])) * (
+            x_c1 - point_a[0]
+        ) + point_a[1]
 
         # Computing the possible coordinates for corner point 2
-        x_c2 = (
-            (-b - Decimal(math.sqrt(sqrt_in))) / (Decimal("2.0") * a)
-        )
+        x_c2 = (-b - Decimal(math.sqrt(sqrt_in))) / (Decimal("2.0") * a)
 
-        y_c2 = (
-            ((point_b[1] - point_a[1]) / (point_b[0] - point_a[0]))
-            * (x_c2 - point_a[0]) + point_a[1]
-        )
+        y_c2 = ((point_b[1] - point_a[1]) / (point_b[0] - point_a[0])) * (
+            x_c2 - point_a[0]
+        ) + point_a[1]
 
         # Let's find out which solution point has more distance to
         # point_b. Assumption: the corner point located via a and b
         # measures will be the closest to the boundary line
-        d1 = (
-            math.sqrt((x_c1-point_a[0]) ** Decimal("2.0")
-                      + (y_c1-point_a[1]) ** Decimal("2.0"))
+        d1 = math.sqrt(
+            (x_c1 - point_a[0]) ** Decimal("2.0")
+            + (y_c1 - point_a[1]) ** Decimal("2.0")
         )
-        d2 = (
-            math.sqrt((x_c2 - point_a[0]) ** Decimal("2.0")
-                      + (y_c2 - point_a[1]) ** Decimal("2.0"))
+        d2 = math.sqrt(
+            (x_c2 - point_a[0]) ** Decimal("2.0")
+            + (y_c2 - point_a[1]) ** Decimal("2.0")
         )
 
         if d1 < d2:
@@ -535,51 +512,53 @@ class RectangularMapping(SelectTool):
 
         # Coordinates of the first possible solution point
         x_d1 = (
-            (point2[1] * d_measure * Decimal(math.sqrt(
-                a2 ** Decimal("2.0") + b2 ** Decimal("2.0")
-            ))
-              - point1[1] * d_measure * Decimal(math.sqrt(
-                    a2 ** Decimal("2.0") + b2 ** Decimal("2.0")
-                )) - b2 * point2[1] * point2[1]
-              + b2 * point2[1] * point1[1]
-              - b2 * point2[0] ** Decimal("2.0") + b2 * point2[0] * point1[0]
-              - c2 * point2[1] + c2 * point1[1]
-              )
-            / (a2 * point2[1] - a2 * point1[1]
-               - b2 * point2[0] + b2 * point1[0])
-        )
+            point2[1]
+            * d_measure
+            * Decimal(math.sqrt(a2 ** Decimal("2.0") + b2 ** Decimal("2.0")))
+            - point1[1]
+            * d_measure
+            * Decimal(math.sqrt(a2 ** Decimal("2.0") + b2 ** Decimal("2.0")))
+            - b2 * point2[1] * point2[1]
+            + b2 * point2[1] * point1[1]
+            - b2 * point2[0] ** Decimal("2.0")
+            + b2 * point2[0] * point1[0]
+            - c2 * point2[1]
+            + c2 * point1[1]
+        ) / (a2 * point2[1] - a2 * point1[1] - b2 * point2[0] + b2 * point1[0])
 
         y_d1 = (
-            (point2[1] ** Decimal("2.0") - point2[1] * point1[1]
-             - Decimal(x_d1) * point2[0]
-             + Decimal(x_d1) * point1[0]
-             + point2[0] ** Decimal("2.0") - point2[0] * point1[0])
-            / (point2[1] - point1[1])
-        )
+            point2[1] ** Decimal("2.0")
+            - point2[1] * point1[1]
+            - Decimal(x_d1) * point2[0]
+            + Decimal(x_d1) * point1[0]
+            + point2[0] ** Decimal("2.0")
+            - point2[0] * point1[0]
+        ) / (point2[1] - point1[1])
 
         # Coordinates of the second possible solution point
         x_d2 = (
-            (-point2[1] * d_measure * Decimal(math.sqrt(
-                a2 ** Decimal("2.0") + b2 ** Decimal("2.0")
-            ))
-             + point1[1] * d_measure * Decimal(math.sqrt(
-                    a2 ** Decimal("2.0") + b2 ** Decimal("2.0")
-                )) - b2 * point2[1] ** Decimal("2.0")
-             + b2 * point2[1] * point1[1]
-             - b2 * point2[0] ** Decimal("2.0") + b2 * point2[0] * point1[0]
-             - c2 * point2[1] + c2 * point1[1]
-             )
-            / (a2 * point2[1] - a2 * point1[1]
-               - b2 * point2[0] + b2 * point1[0])
-        )
+            -point2[1]
+            * d_measure
+            * Decimal(math.sqrt(a2 ** Decimal("2.0") + b2 ** Decimal("2.0")))
+            + point1[1]
+            * d_measure
+            * Decimal(math.sqrt(a2 ** Decimal("2.0") + b2 ** Decimal("2.0")))
+            - b2 * point2[1] ** Decimal("2.0")
+            + b2 * point2[1] * point1[1]
+            - b2 * point2[0] ** Decimal("2.0")
+            + b2 * point2[0] * point1[0]
+            - c2 * point2[1]
+            + c2 * point1[1]
+        ) / (a2 * point2[1] - a2 * point1[1] - b2 * point2[0] + b2 * point1[0])
 
         y_d2 = (
-            (point2[1] ** Decimal("2.0") - point2[1] * point1[1]
-             - Decimal(x_d2) * point2[0]
-             + Decimal(x_d2) * point1[0]
-             + point2[0] ** Decimal("2.0") - point2[0] * point1[0])
-            / (point2[1] - point1[1])
-        )
+            point2[1] ** Decimal("2.0")
+            - point2[1] * point1[1]
+            - Decimal(x_d2) * point2[0]
+            + Decimal(x_d2) * point1[0]
+            + point2[0] ** Decimal("2.0")
+            - point2[0] * point1[0]
+        ) / (point2[1] - point1[1])
 
         # Check that the corner points lie in the
         # map canvas extent
@@ -615,8 +594,10 @@ class RectangularMapping(SelectTool):
 
     def _add_points(
         self,
-        points: List[Decimal], corners: List[List[Decimal]],
-        options_layer: QgsVectorLayer, opt_ids: List[int]
+        points: List[Decimal],
+        corners: List[List[Decimal]],
+        options_layer: QgsVectorLayer,
+        opt_ids: List[int],
     ) -> None:
         """Triggered when scratch layers need to be generated."""
 
@@ -624,11 +605,11 @@ class RectangularMapping(SelectTool):
         f1 = QgsFeature()
         f1.setGeometry(QgsGeometry.fromPointXY(point))
         if len(corners) == 0:
-            f1.setAttributes(['Point B opt 1'])
+            f1.setAttributes(["Point B opt 1"])
         elif len(corners) == 1:
-            f1.setAttributes(['Corner 2'])
+            f1.setAttributes(["Corner 2"])
         else:
-            f1.setAttributes(['Corner ' + str(len(corners)+1) + ' opt 1'])
+            f1.setAttributes(["Corner " + str(len(corners) + 1) + " opt 1"])
 
         options_layer_dataprovider = options_layer.dataProvider()
         options_layer_dataprovider.addFeature(f1)
@@ -671,9 +652,9 @@ class RectangularMapping(SelectTool):
             f2 = QgsFeature()
             f2.setGeometry(QgsGeometry.fromPointXY(point2))
             if len(corners) == 0:
-                f2.setAttributes(['Point B opt 2'])
+                f2.setAttributes(["Point B opt 2"])
             else:
-                f2.setAttributes(['Corner ' + str(len(corners)+1) + ' opt 2'])
+                f2.setAttributes(["Corner " + str(len(corners) + 1) + " opt 2"])
             options_layer_dataprovider.addFeature(f2)
             options_layer.updateExtents()
             opt_ids.append(f2.id())
