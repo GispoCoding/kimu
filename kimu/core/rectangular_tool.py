@@ -49,15 +49,112 @@ class RectangularMapping(SelectTool):
 
     def canvasPressEvent(self, event: QgsMapToolEmitPoint) -> None:  # noqa: N802
         """Canvas click event."""
-        if self.iface.activeLayer() != self.layer:
-            LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
+        selected_line_coords = self._get_selected_line_coords(event)
+        if not selected_line_coords:
             return
 
-        if QgsWkbTypes.isSingleType(
+        # Determine parameter values for solving the quadratic equation in hand
+        parameters = self._calculate_parameters(selected_line_coords)
+
+        try:
+            point_a = self._locate_point_a(selected_line_coords, parameters)
+            points_b = self._locate_point_b(selected_line_coords, point_a)
+        except IndexError:
+            return  # Ensure some error msg is displayed to user by locate_point methods
+
+        option_points_layer = self._create_optional_points_layer()
+        QgsProject.instance().addMapLayer(option_points_layer)
+        # TODO: consider replacing with List[QgsPointXY] or list of tuples
+        # selected_corners: List[List[Decimal]] = []
+
+        option_points_layer.startEditing()
+        option_point_ids = self._add_option_points_to_layer(
+            points_b, option_points_layer
+        )
+
+        message_box = self._generate_option_point_messagebox(1)
+        ret = message_box.exec()
+        if ret == QMessageBox.Yes:
+            selected_corners = [[points_b[0], points_b[1]]]
+            option_points_to_delete = [option_point_ids[1]]
+        else:
+            selected_corners = [[points_b[2], points_b[3]]]
+            option_points_to_delete = [option_point_ids[0]]
+
+        point_b = selected_corners[0]
+        # c_measures are given in crs units (meters for EPSG: 3067)
+        c_measures = [
+            Decimal(measure.strip()) for measure in self.ui.get_c_measures().split(",")
+        ]
+
+        for i, c_measure in enumerate(c_measures):  # TODO: refactor loop
+            if i == 0:
+                # Map the second corner point which will be located in the extension
+                # of the line feature connecting point_a and point_b
+                point_c = self._locate_point_c(c_measure, point_a, point_b)
+                option_point_ids += self._add_option_points_to_layer(
+                    point_c, option_points_layer, selected_corners
+                )
+                selected_corners.append([point_c[0], point_c[1]])
+                continue
+
+            # TODO: don't ask for corner #5, instead automatically close rectangle
+
+            # Map the rest of the rectangular corner points (they will be located
+            # perpendicularly with respect to the line feature connecting two last
+            # elements of the selected corners list)
+            new_corner_points = self._locate_point_d(c_measure, selected_corners)
+            option_point_ids += self._add_option_points_to_layer(
+                new_corner_points, option_points_layer, selected_corners
+            )
+
+            message_box = self._generate_option_point_messagebox(
+                len(selected_corners) + 1
+            )
+            ret = message_box.exec()
+            if ret == QMessageBox.No:
+                # Check if point already in selected corners list (avoid duplicates)
+                if [new_corner_points[2], new_corner_points[3]] not in selected_corners:
+                    if i == 1:
+                        selected_corners.append(
+                            [new_corner_points[2], new_corner_points[3]]
+                        )
+                        option_points_to_delete.append(option_point_ids[3])
+                    else:
+                        selected_corners.append(
+                            [new_corner_points[2], new_corner_points[3]]
+                        )
+                        option_points_to_delete.append(
+                            option_point_ids[2 + (i * 2 - 1)]
+                        )
+
+            else:
+                if [new_corner_points[0], new_corner_points[1]] not in selected_corners:
+                    if i == 1:
+                        selected_corners.append(
+                            [new_corner_points[0], new_corner_points[1]]
+                        )
+                        option_points_to_delete.append(option_point_ids[4])
+                    else:
+                        selected_corners.append(
+                            [new_corner_points[0], new_corner_points[1]]
+                        )
+                        option_points_to_delete.append(option_point_ids[2 + (i * 2)])
+
+        option_points_layer.deleteFeatures(option_points_to_delete)
+        option_points_layer.commitChanges()
+        iface.vectorLayerTools().stopEditing(option_points_layer)
+
+        self._write_output_to_file(option_points_layer)
+
+    def _get_selected_line_coords(self, event: QgsMapToolEmitPoint) -> List[Decimal]:
+        if self.iface.activeLayer() != self.layer:
+            LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
+            return []
+
+        if not QgsWkbTypes.isSingleType(
             list(self.iface.activeLayer().getFeatures())[0].geometry().wkbType()
         ):
-            pass
-        else:
             LOGGER.warning(
                 tr(
                     "Please select a line layer with "
@@ -66,28 +163,30 @@ class RectangularMapping(SelectTool):
                 ),
                 extra={"details": ""},
             )
-            return
+            return []
 
         if len(self.iface.activeLayer().selectedFeatures()) != 1:
-            LOGGER.warning(tr("Please select only one line"), extra={"details": ""})
-            return
-
-        geometry = self.iface.activeLayer().selectedFeatures()[0].geometry()
+            LOGGER.warning(
+                tr("Please select exactly one line feature"), extra={"details": ""}
+            )
+            return []
 
         # Snap the click to the closest point feature available and get
         # the coordinates of the property boundary line's end point we
         # wish to measure the distance from
         start_point = ClickTool(self.iface).activate(event)
+        selected_line_geometry = (
+            self.iface.activeLayer().selectedFeatures()[0].geometry().asPolyline()
+        )
 
-        # Coordinates of the points implicitly defining the property boundary line
-        line_feat = geometry.asPolyline()
         # Checks that the coordinate values get stored in the correct order
-        if Decimal(QgsPointXY(line_feat[0]).x()) == start_point[0]:
-            point1 = QgsPointXY(line_feat[0])
-            point2 = QgsPointXY(line_feat[-1])
-        elif Decimal(QgsPointXY(line_feat[-1]).x()) == start_point[0]:
-            point1 = QgsPointXY(line_feat[-1])
-            point2 = QgsPointXY(line_feat[0])
+        # TODO: replace direct coordinate comparisons with QgsGeometry.overlaps()
+        if Decimal(QgsPointXY(selected_line_geometry[0]).x()) == start_point[0]:
+            point1 = QgsPointXY(selected_line_geometry[0])
+            point2 = QgsPointXY(selected_line_geometry[-1])
+        elif Decimal(QgsPointXY(selected_line_geometry[-1]).x()) == start_point[0]:
+            point1 = QgsPointXY(selected_line_geometry[-1])
+            point2 = QgsPointXY(selected_line_geometry[0])
         else:
             LOGGER.warning(
                 tr(
@@ -96,132 +195,19 @@ class RectangularMapping(SelectTool):
                 ),
                 extra={"details": ""},
             )
-            return
+            return []
 
+        # TODO: consider using two QgsPointXY instead of list of coordinates
         line_coords = [
             Decimal(point1.x()),
             Decimal(point1.y()),
             Decimal(point2.x()),
             Decimal(point2.y()),
         ]
-
-        # Call the function capable of determining the parameter values
-        # for solving the quadratic equation in hand
-        parameters = self._calculate_parameters(line_coords)
-
-        # Call for function capable of determining point_a
-        point_a = self._locate_point_a(line_coords, parameters)
-
-        # Call for function capable of determining point_b
-        points_b = self._locate_point_b(line_coords, point_a)
-
-        corners: List[List[Decimal]] = []
-
-        output_file_path = self.ui.get_output_file_path()
-
-        options_layer = QgsVectorLayer("Point", "temp", "memory")
-        crs = self.layer.crs()
-        options_layer.setCrs(crs)
-        options_layer_dataprovider = options_layer.dataProvider()
-        options_layer_dataprovider.addAttributes([QgsField("id", QVariant.String)])
-        options_layer.updateFields()
-
-        option_point_ids: List[int] = []
-        option_points_to_delete: List[int] = []
-
-        self._add_points(points_b, corners, options_layer, option_point_ids)
-
-        QgsProject.instance().addMapLayer(options_layer)
-        options_layer.startEditing()
-
-        mb = QMessageBox()
-        mb.setText(
-            "Do you want to choose option 1 for corner point "
-            + str(len(corners) + 1)
-            + "?"
-        )
-        mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-        ret = mb.exec()
-        if ret == QMessageBox.No:
-            option_points_to_delete.append(option_point_ids[0])
-            corners.append([points_b[2], points_b[3]])
-        else:
-            option_points_to_delete.append(option_point_ids[1])
-            corners.append([points_b[0], points_b[1]])
-
-        point_b = corners[0]
-
-        # c_measures are given in crs units (meters for EPSG: 3067)
-        c_measures = [
-            Decimal(measure.strip()) for measure in self.ui.get_c_measures().split(",")
-        ]
-
-        for i, c_measure in enumerate(c_measures):
-            if i == 0:
-                # Map the second corner point which will be
-                # located in the extension of the line feature
-                # connecting point_a and point_b
-                point_c = self._locate_point_c(c_measure, point_a, point_b)
-                self._add_points(point_c, corners, options_layer, option_point_ids)
-                corners.append([point_c[0], point_c[1]])
-                continue
-
-            # Map the rest of the rectangular corner points
-            # (they will be located perpendicularly with respect to
-            # the line feature connecting two last elements of
-            # the corners list)
-            new_corner_points = self._locate_point_d(c_measure, corners)
-            self._add_points(
-                new_corner_points, corners, options_layer, option_point_ids
-            )
-            mb = QMessageBox()
-            mb.setText(
-                "Do you want to choose option 1 for corner point "
-                + str(len(corners) + 1)
-                + "?"
-            )
-            mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-            ret = mb.exec()
-            if ret == QMessageBox.No:
-                # Check if point already exists in corners list
-                if [new_corner_points[2], new_corner_points[3]] not in corners:
-                    if i == 1:
-                        option_points_to_delete.append(option_point_ids[3])
-                        corners.append([new_corner_points[2], new_corner_points[3]])
-                    else:
-                        option_points_to_delete.append(
-                            option_point_ids[2 + (i * 2 - 1)]
-                        )
-                        corners.append([new_corner_points[2], new_corner_points[3]])
-            else:
-                if [new_corner_points[0], new_corner_points[1]] not in corners:
-                    if i == 1:
-                        option_points_to_delete.append(option_point_ids[4])
-                        corners.append([new_corner_points[0], new_corner_points[1]])
-                    else:
-                        option_points_to_delete.append(option_point_ids[2 + (i * 2)])
-                        corners.append([new_corner_points[0], new_corner_points[1]])
-
-        options_layer.deleteFeatures(option_points_to_delete)
-        options_layer.commitChanges()
-        iface.vectorLayerTools().stopEditing(options_layer)
-
-        writer_options = QgsVectorFileWriter.SaveVectorOptions()
-        writer_options.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
-        error, explanation = QgsVectorFileWriter.writeAsVectorFormatV2(
-            options_layer,
-            output_file_path,
-            QgsProject.instance().transformContext(),
-            writer_options,
-        )
-        if error:
-            LOGGER.warning(
-                tr(f"Error writing output to file, error code {error}"),
-                extra={"details": tr(f"Details: {explanation}")},
-            )
+        return line_coords
 
     def _calculate_parameters(self, line_coords: List[Decimal]) -> List[Decimal]:
-        """Calculate values for a, b and c parameters"""
+        """Calculate values for a, b and c parameters."""
         # a_measure is given in crs units (meters for EPSG: 3067)
         a_measure = Decimal(self.ui.get_a_measure())
         a = (
@@ -426,8 +412,102 @@ class RectangularMapping(SelectTool):
             return []
 
         points_b_res = [x_b1, y_b1, x_b2, y_b2]
-
         return points_b_res
+
+    def _create_optional_points_layer(self) -> QgsVectorLayer:
+        """Creates a QgsVectorLayer for storing optional points."""
+        layer = QgsVectorLayer("Point", "temp", "memory")
+        crs = self.layer.crs()
+        layer.setCrs(crs)
+        options_layer_dataprovider = layer.dataProvider()
+        options_layer_dataprovider.addAttributes([QgsField("id", QVariant.String)])
+        layer.updateFields()
+        layer.setName(tr("Corner point options"))
+        layer.renderer().symbol().setSize(2)
+        layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
+        layer_settings = QgsPalLayerSettings()
+        text_format = QgsTextFormat()
+        text_format.setFont(QFont("FreeMono", 10))
+        text_format.setSize(10)
+        buffer_settings = QgsTextBufferSettings()
+        buffer_settings.setEnabled(True)
+        buffer_settings.setSize(0.1)
+        buffer_settings.setColor(QColor("black"))
+        text_format.setBuffer(buffer_settings)
+        layer_settings.setFormat(text_format)
+        layer_settings.fieldName = "id"
+        layer_settings.placement = 0
+        layer_settings.dist = 2.0
+        layer_settings.enabled = True
+        layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
+        layer.setLabelsEnabled(True)
+        layer.setLabeling(layer_settings)
+        return layer
+
+    @staticmethod
+    def _add_option_points_to_layer(
+        point_coordinates: List[Decimal],
+        options_layer: QgsVectorLayer,
+        selected_corners: List[List[Decimal]] = None,
+    ) -> List[int]:
+        """Adds new option points to option point layer,
+        returns list of IDs of added features."""
+        if not selected_corners:
+            selected_corners = []
+
+        point_geometries: List[QgsPointXY] = []
+        point_ids: List[int] = []
+        coordinates_iterator = iter(point_coordinates)
+        for coordinate in coordinates_iterator:
+            point_geometries.append(
+                QgsPointXY(float(coordinate), float(next(coordinates_iterator)))
+            )
+
+        for i, point in enumerate(point_geometries):
+            point_feature = QgsFeature()
+            point_feature.setGeometry(QgsGeometry.fromPointXY(point))
+
+            if len(selected_corners) == 0:
+                point_feature.setAttributes([f"Point B opt {i + 1}"])
+            elif len(selected_corners) == 1:
+                point_feature.setAttributes(["Corner 2"])
+            else:
+                point_feature.setAttributes(
+                    [f"Corner {len(selected_corners) + 1} opt {i + 1}"]
+                )
+
+            options_layer.addFeature(point_feature)
+            point_ids.append(point_feature.id())
+
+        options_layer.updateExtents()
+        options_layer.triggerRepaint()
+        return point_ids
+
+    @staticmethod
+    def _generate_option_point_messagebox(corner_point_idx: int) -> QMessageBox:
+        message_box = QMessageBox()
+        message_box.setText(
+            tr(f"Do you want to choose option 1 for corner point {corner_point_idx}?")
+        )
+        message_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        return message_box
+
+    def _write_output_to_file(self, layer: QgsVectorLayer) -> None:
+        output_file_path = self.ui.get_output_file_path()
+        writer_options = QgsVectorFileWriter.SaveVectorOptions()
+        writer_options.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
+        error, explanation = QgsVectorFileWriter.writeAsVectorFormatV2(
+            layer,
+            output_file_path,
+            QgsProject.instance().transformContext(),
+            writer_options,
+        )
+
+        if error:
+            LOGGER.warning(
+                tr(f"Error writing output to file, error code {error}"),
+                extra={"details": tr(f"Details: {explanation}")},
+            )
 
     @staticmethod
     def _locate_point_c(
@@ -503,13 +583,13 @@ class RectangularMapping(SelectTool):
 
     @staticmethod
     def _locate_point_d(
-        d_measure: Decimal, corners: List[List[Decimal]]
+        d_measure: Decimal, selected_corners: List[List[Decimal]]
     ) -> List[Decimal]:
         """Determine the coordinates of the corner point belonging to the line
         which is orthogonal to the line determined by two latest corner points."""
 
-        point1 = corners[-2]
-        point2 = corners[-1]
+        point1 = selected_corners[-2]
+        point2 = selected_corners[-1]
 
         # Analytical geometry: two-point form of a line
         a2 = (point2[1] - point1[1]) / (point2[0] - point1[0])
@@ -597,70 +677,3 @@ class RectangularMapping(SelectTool):
         points_d_res = [x_d1, y_d1, x_d2, y_d2]
 
         return points_d_res
-
-    @staticmethod
-    def _add_points(
-        points: List[Decimal],
-        corners: List[List[Decimal]],
-        options_layer: QgsVectorLayer,
-        opt_ids: List[int],
-    ) -> None:
-        """Triggered when scratch layers need to be generated."""
-
-        point = QgsPointXY(float(points[0]), float(points[1]))
-        f1 = QgsFeature()
-        f1.setGeometry(QgsGeometry.fromPointXY(point))
-        if len(corners) == 0:
-            f1.setAttributes(["Point B opt 1"])
-        elif len(corners) == 1:
-            f1.setAttributes(["Corner 2"])
-        else:
-            f1.setAttributes(["Corner " + str(len(corners) + 1) + " opt 1"])
-
-        options_layer_dataprovider = options_layer.dataProvider()
-        options_layer_dataprovider.addFeature(f1)
-        options_layer.updateExtents()
-        opt_ids.append(f1.id())
-
-        options_layer.setName(tr("Corner point options"))
-        options_layer.renderer().symbol().setSize(2)
-        options_layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
-
-        layer_settings = QgsPalLayerSettings()
-        text_format = QgsTextFormat()
-
-        text_format.setFont(QFont("FreeMono", 10))
-        text_format.setSize(10)
-
-        buffer_settings = QgsTextBufferSettings()
-        buffer_settings.setEnabled(True)
-        buffer_settings.setSize(0.1)
-        buffer_settings.setColor(QColor("black"))
-
-        text_format.setBuffer(buffer_settings)
-        layer_settings.setFormat(text_format)
-
-        layer_settings.fieldName = "id"
-
-        layer_settings.placement = 0
-        layer_settings.dist = 2.0
-
-        layer_settings.enabled = True
-
-        layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
-
-        options_layer.setLabelsEnabled(True)
-        options_layer.setLabeling(layer_settings)
-        options_layer.triggerRepaint()
-
-        if len(points) > 2:
-            point2 = QgsPointXY(float(points[2]), float(points[3]))
-            f2 = QgsFeature()
-            f2.setGeometry(QgsGeometry.fromPointXY(point2))
-            if len(corners) == 0:
-                f2.setAttributes(["Point B opt 2"])
-            else:
-                f2.setAttributes(["Corner " + str(len(corners) + 1) + " opt 2"])
-            options_layer_dataprovider.addFeature(f2)
-            options_layer.updateExtents()
-            opt_ids.append(f2.id())
