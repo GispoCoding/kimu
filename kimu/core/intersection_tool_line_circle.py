@@ -8,12 +8,10 @@ from qgis.core import (
     QgsGeometry,
     QgsPointXY,
     QgsProject,
-    QgsSnappingConfig,
-    QgsTolerance,
     QgsVectorLayer,
     QgsWkbTypes,
 )
-from qgis.gui import QgisInterface, QgsMapToolEmitPoint, QgsSnapIndicator
+from qgis.gui import QgisInterface, QgsMapToolEmitPoint
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor
 from qgis.utils import iface
@@ -22,6 +20,7 @@ from ..qgis_plugin_tools.tools.custom_logging import setup_logger
 from ..qgis_plugin_tools.tools.i18n import tr
 from ..qgis_plugin_tools.tools.resources import plugin_name
 from ..ui.line_circle_dockwidget import LineCircleDockWidget
+from .click_tool import ClickTool
 from .select_tool import SelectTool
 
 LOGGER = setup_logger(plugin_name())
@@ -31,16 +30,6 @@ class IntersectionLineCircle(SelectTool):
     def __init__(self, iface: QgisInterface, dock_widget: LineCircleDockWidget) -> None:
         super().__init__(iface)
         self.ui: LineCircleDockWidget = dock_widget
-        # Set suitable snapping settings
-        my_snap_config = QgsSnappingConfig()
-        my_snap_config.setEnabled(True)
-        my_snap_config.setType(QgsSnappingConfig.Vertex)
-        my_snap_config.setUnits(QgsTolerance.Pixels)
-        my_snap_config.setTolerance(15)
-        my_snap_config.setIntersectionSnapping(True)
-        my_snap_config.setMode(QgsSnappingConfig.AllLayers)
-        QgsProject.instance().setSnappingConfig(my_snap_config)
-        self.i = QgsSnapIndicator(self.iface.mapCanvas())
 
     def active_changed(self, layer: QgsVectorLayer) -> None:
         """Triggered when active layer changes."""
@@ -63,35 +52,31 @@ class IntersectionLineCircle(SelectTool):
             LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
             return
 
-        check = 0
-        for test_feature in self.iface.activeLayer().getFeatures():
-            if check == 0:
-                test_geom = test_feature.geometry()
-                if QgsWkbTypes.isSingleType(test_geom.wkbType()):
-                    pass
-                else:
-                    LOGGER.warning(
-                        tr("Please select a line layer with "
-                           "LineString geometries (instead "
-                           "of MultiLineString geometries)"),
-                        extra={"details": ""})
-                    return
-                check = 1
-            else:
-                pass
+        if QgsWkbTypes.isSingleType(
+            list(
+                self.iface.activeLayer().getFeatures()
+            )[0].geometry().wkbType()
+        ):
+            pass
+        else:
+            LOGGER.warning(
+                tr("Please select a line layer with "
+                   "LineString geometries (instead "
+                   "of MultiLineString geometries)"),
+                extra={"details": ""})
+            return
 
         if len(self.iface.activeLayer().selectedFeatures()) != 1:
             LOGGER.warning(tr("Please select only one line"), extra={"details": ""})
             return
-        else:
-            geometry = self.iface.activeLayer().selectedFeatures()[0].geometry()
 
-        # Snap the click to the closest point feature available
-        m = self.iface.mapCanvas().snappingUtils().snapToMap(event.pos())
-        self.i.setMatch(m)
+        geometry = self.iface.activeLayer().selectedFeatures()[0].geometry()
 
-        # Coordinates of the point to be used as a circle centroid
-        centroid = [Decimal(m.point().x()), Decimal(m.point().y())]
+        # Snap the click to the closest point feature available.
+        # Note that your QGIS's snapping options have on effect
+        # on which objects / vertexes the tool will snap and
+        # get the coordinates of the point to be used as a circle centroid
+        centroid = ClickTool(self.iface).activate(event)
 
         # Call for function determining the intersection point
         self._intersect(geometry, centroid)

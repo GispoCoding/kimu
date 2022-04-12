@@ -41,25 +41,20 @@ class IntersectionLines:
             LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
             return
 
-        check = 0
-        for test_feature in selected_layer.getFeatures():
-            if check == 0:
-                test_geom = test_feature.geometry()
-                if QgsWkbTypes.isSingleType(test_geom.wkbType()):
-                    pass
-                else:
-                    LOGGER.warning(
-                        tr(
-                            "Please select a line layer with "
-                            "LineString geometries (instead "
-                            "of MultiLineString geometries)"
-                        ),
-                        extra={"details": ""},
-                    )
-                    return
-                check = 1
-            else:
-                pass
+        if QgsWkbTypes.isSingleType(
+            list(selected_layer.getFeatures())[0].geometry().wkbType()
+        ):
+            pass
+        else:
+            LOGGER.warning(
+                tr(
+                    "Please select a line layer with "
+                    "LineString geometries (instead "
+                    "of MultiLineString geometries)"
+                ),
+                extra={"details": ""},
+            )
+            return
 
         if len(selected_layer.selectedFeatures()) != 2:
             LOGGER.warning(

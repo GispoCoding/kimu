@@ -64,15 +64,15 @@ jobs:
         with:
           submodules: true
 
-      - name: Choco install qgis
+      - name: Choco install qgis-ltr 3.22.5
         uses: crazy-max/ghaction-chocolatey@v1
         with:
-          args: install qgis-ltr -y
+          args: install qgis-ltr -y --version 3.22.5
 
       - name: Run tests
         shell: pwsh
         run: |
-          $env:PATH="C:\Program Files\QGIS 3.16\bin;$env:PATH"
+          $env:PATH="C:\Program Files\QGIS 3.22.5\bin;$env:PATH"
           $env:QGIS_PLUGIN_IN_CI=1
           python-qgis-ltr.bat -m pip install -q pytest
           python-qgis-ltr.bat -m pytest -v
