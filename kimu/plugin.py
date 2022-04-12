@@ -5,6 +5,7 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QAction, QWidget
 from qgis.gui import QgisInterface
 
+from .core.displacement_tool import DisplaceLine
 from .core.explode_lines import ExplodeLines
 from .core.explode_lines2points import ExplodeLines2points
 from .core.explode_tool import ExplodeTool
@@ -14,6 +15,7 @@ from .core.split_tool import SplitTool
 from .qgis_plugin_tools.tools.custom_logging import setup_logger, teardown_logger
 from .qgis_plugin_tools.tools.i18n import setup_translation, tr
 from .qgis_plugin_tools.tools.resources import plugin_name
+from .ui.displacement_dockwidget import DisplacementDockWidget
 from .ui.line_circle_dockwidget import LineCircleDockWidget
 from .ui.split_tool_dockwidget import SplitToolDockWidget
 
@@ -28,10 +30,12 @@ class Plugin:
         self.iface = iface
         split_tool_dockwidget = SplitToolDockWidget(iface)
         line_circle_dockwidget = LineCircleDockWidget(iface)
+        displacement_dockwidget = DisplacementDockWidget(iface)
         self.split_tool = SplitTool(self.iface, split_tool_dockwidget)
         self.explode_tool = ExplodeTool(self.split_tool)
         self.explode_lines = ExplodeLines()
         self.explode_lines2points = ExplodeLines2points()
+        self.displace_line = DisplaceLine(self.iface, displacement_dockwidget)
         self.intersection_tool_lines = IntersectionLines()
         self.intersection_tool_line_circle = IntersectionLineCircle(
             self.iface, line_circle_dockwidget
@@ -150,6 +154,16 @@ class Plugin:
             add_to_menu=False,
             add_to_toolbar=True,
         )
+        displace_action = self.add_action(
+            "",
+            text=tr("Displace line"),
+            callback=self.activate_displace_line,
+            parent=self.iface.mainWindow(),
+            add_to_menu=False,
+            add_to_toolbar=True,
+        )
+        displace_action.setCheckable(True)
+        self.displace_line.setAction(displace_action)
         line_circle_action = self.add_action(
             "",
             text=tr("Intersect line and circle"),
@@ -190,6 +204,10 @@ class Plugin:
 
     def activate_explode_lines2points(self) -> None:
         self.explode_lines2points.run()
+
+    def activate_displace_line(self) -> None:
+        self.iface.addDockWidget(Qt.RightDockWidgetArea, self.displace_line.ui)
+        self.iface.mapCanvas().setMapTool(self.displace_line)
 
     def activate_intersection_tool_lines(self) -> None:
         self.intersection_tool_lines.run()
