@@ -1,5 +1,5 @@
-from PyQt5.QtWidgets import QWidget
-from qgis.gui import QgisInterface, QgsDoubleSpinBox
+from PyQt5.QtWidgets import QTextEdit, QWidget
+from qgis.gui import QgisInterface, QgsDoubleSpinBox, QgsFileWidget
 from qgis.PyQt import QtWidgets
 
 from ..qgis_plugin_tools.tools.resources import load_ui
@@ -20,3 +20,11 @@ class RectangularDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
     def get_b_measure(self) -> float:
         self.doublespinbox_b: QgsDoubleSpinBox
         return self.doublespinbox_b.value()
+
+    def get_c_measures(self) -> str:
+        self.textEdit: QTextEdit
+        return self.textEdit.toPlainText()
+
+    def get_output_file_path(self) -> str:
+        self.mQgsFileWidget: QgsFileWidget
+        return self.mQgsFileWidget.filePath()
