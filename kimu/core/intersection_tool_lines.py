@@ -169,7 +169,7 @@ class IntersectionLines:
         intersection_point = QgsPointXY(x, y)
         f = QgsFeature()
         f.setGeometry(QgsGeometry.fromPointXY(intersection_point))
-        f.setAttributes([round(x, 2), round(y, 2)])
+        f.setAttributes([round(x, 3), round(y, 3)])
         result_layer_dataprovider.addFeature(f)
         result_layer.updateExtents()
 

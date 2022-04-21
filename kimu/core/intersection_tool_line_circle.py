@@ -2,12 +2,14 @@ import math
 from decimal import Decimal
 from typing import List
 
+from PyQt5.QtWidgets import QMessageBox
 from qgis.core import (
     QgsFeature,
     QgsField,
     QgsGeometry,
     QgsPointXY,
     QgsProject,
+    QgsVectorFileWriter,
     QgsVectorLayer,
     QgsWkbTypes,
 )
@@ -192,12 +194,32 @@ class IntersectionLineCircle(SelectTool):
         result = [a, b, c]
         return result
 
+    def _write_output_to_file(self, layer: QgsVectorLayer) -> None:
+        """Writes the selected corner points to a spesifed file"""
+        output_file_path = self.ui.get_output_file_path()
+        writer_options = QgsVectorFileWriter.SaveVectorOptions()
+        writer_options.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
+        error, explanation = QgsVectorFileWriter.writeAsVectorFormatV2(
+            layer,
+            output_file_path,
+            QgsProject.instance().transformContext(),
+            writer_options,
+        )
+
+        if error:
+            LOGGER.warning(
+                tr(f"Error writing output to file, error code {error}"),
+                extra={"details": tr(f"Details: {explanation}")},
+            )
+
     def _add_result_layers(
         self,
         x_sol1: QVariant.Double,
         y_sol1: QVariant.Double,
         x_sol2: QVariant.Double,
         y_sol2: QVariant.Double,
+        centroid_x: QVariant.Double,
+        centroid_y: QVariant.Double
     ) -> None:
         """Triggered when result layer needs to be generated."""
         result_layer1 = QgsVectorLayer("Point", "temp", "memory")
@@ -205,20 +227,25 @@ class IntersectionLineCircle(SelectTool):
         result_layer1.setCrs(crs)
         result_layer1_dataprovider = result_layer1.dataProvider()
         result_layer1_dataprovider.addAttributes(
-            [QgsField("xcoord", QVariant.Double), QgsField("ycoord", QVariant.Double)]
+            [QgsField("xcoord", QVariant.Double), QgsField("ycoord", QVariant.Double),
+             QgsField("centroid xcoord", QVariant.Double),
+             QgsField("centroid ycoord", QVariant.Double)]
         )
         result_layer1.updateFields()
 
         intersection_point1 = QgsPointXY(x_sol1, y_sol1)
         f1 = QgsFeature()
         f1.setGeometry(QgsGeometry.fromPointXY(intersection_point1))
-        f1.setAttributes([round(x_sol1, 2), round(y_sol1, 2)])
+        f1.setAttributes(
+            [round(x_sol1, 3), round(y_sol1, 3),
+             round(centroid_x, 3), round(centroid_y, 3)]
+        )
         result_layer1_dataprovider.addFeature(f1)
         result_layer1.updateExtents()
 
         result_layer1.setName(tr("Intersection point 1"))
         result_layer1.renderer().symbol().setSize(2)
-        result_layer1.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
+        result_layer1.renderer().symbol().setColor(QColor.fromRgb(255, 255, 255))
 
         QgsProject.instance().addMapLayer(result_layer1)
 
@@ -233,21 +260,46 @@ class IntersectionLineCircle(SelectTool):
         result_layer2.setCrs(crs)
         result_layer2_dataprovider = result_layer2.dataProvider()
         result_layer2_dataprovider.addAttributes(
-            [QgsField("xcoord", QVariant.Double), QgsField("ycoord", QVariant.Double)]
+            [QgsField("xcoord", QVariant.Double), QgsField("ycoord", QVariant.Double),
+             QgsField("centroid xcoord", QVariant.Double),
+             QgsField("centroid ycoord", QVariant.Double)]
         )
         result_layer2.updateFields()
         intersection_point2 = QgsPointXY(x_sol2, y_sol2)
         f2 = QgsFeature()
         f2.setGeometry(QgsGeometry.fromPointXY(intersection_point2))
-        f2.setAttributes([round(x_sol2, 2), round(y_sol2, 2)])
+        f2.setAttributes(
+            [round(x_sol2, 3), round(y_sol2, 3),
+             round(centroid_x, 3), round(centroid_y, 3)]
+        )
         result_layer2_dataprovider.addFeature(f2)
         result_layer2.updateExtents()
 
         result_layer2.setName(tr("Intersection point 2"))
         result_layer2.renderer().symbol().setSize(2)
-        result_layer2.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
+        result_layer2.renderer().symbol().setColor(QColor.fromRgb(0, 0, 0))
 
         QgsProject.instance().addMapLayer(result_layer2)
+
+        # Let's decide which solution point is the desired one
+        message_box = QMessageBox()
+        message_box.setText(tr("Do you want to choose intersection point 1?"))
+        message_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        ret_a = message_box.exec()
+        if ret_a == QMessageBox.Yes:
+            # Let's remove the scratch layer related to the
+            # not-selected solution point
+            QgsProject.instance().removeMapLayer(result_layer2)
+            # Save the mapped point features to the file user has chosen
+            if self.ui.get_output_file_path() != "":
+                self._write_output_to_file(result_layer1)
+        else:
+            # Let's remove the scratch layer related to the
+            # not-selected solution point
+            QgsProject.instance().removeMapLayer(result_layer1)
+            # Save the mapped point features to the file user has chosen
+            if self.ui.get_output_file_path() != "":
+                self._write_output_to_file(result_layer2)
 
     def _intersect(self, geometry: QgsGeometry, centroid: List[Decimal]) -> None:
         """Determine the intersection point(s) of the selected
@@ -337,5 +389,8 @@ class IntersectionLineCircle(SelectTool):
             )
             return
 
+        centroid_x = float(centroid[0])
+        centroid_y = float(centroid[1])
+
         # Add result layer to map canvas
-        self._add_result_layers(x_sol1, y_sol1, x_sol2, y_sol2)
+        self._add_result_layers(x_sol1, y_sol1, x_sol2, y_sol2, centroid_x, centroid_y)
