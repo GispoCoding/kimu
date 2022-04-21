@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import QWidget
-from qgis.gui import QgisInterface, QgsDoubleSpinBox
+from qgis.gui import QgisInterface, QgsDoubleSpinBox, QgsFileWidget
 from qgis.PyQt import QtWidgets
 
 from ..qgis_plugin_tools.tools.resources import load_ui
@@ -16,3 +16,7 @@ class LineCircleDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
     def get_radius(self) -> float:
         self.doublespinbox_radius: QgsDoubleSpinBox
         return self.doublespinbox_radius.value()
+
+    def get_output_file_path(self) -> str:
+        self.mQgsFileWidget: QgsFileWidget
+        return self.mQgsFileWidget.filePath()
