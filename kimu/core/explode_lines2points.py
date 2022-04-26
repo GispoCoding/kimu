@@ -60,5 +60,5 @@ class ExplodeLines2points:
         explode_layer: QgsVectorLayer = explode_result2["OUTPUT"]
         explode_layer.setName(tr("Exploded line as points"))
         explode_layer.renderer().symbol().setSize(2)
-        explode_layer.renderer().symbol().setColor(QColor.fromRgb(255, 192, 203))
+        explode_layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
         QgsProject.instance().addMapLayer(explode_layer)

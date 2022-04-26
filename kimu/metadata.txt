@@ -1,5 +1,5 @@
 [general]
-name=KiMu
+name=Geodesic Tools
 description=
 about=
 version=0.0.1
