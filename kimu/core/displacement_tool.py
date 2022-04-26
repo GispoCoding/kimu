@@ -81,7 +81,7 @@ class DisplaceLine(SelectTool):
         crs = selected_layer.crs()
         temp_layer.setCrs(crs)
         temp_layer_dataprovider = temp_layer.dataProvider()
-        temp_layer_dataprovider.addAttributes([QgsField("tunniste", QVariant.String)])
+        temp_layer_dataprovider.addAttributes([QgsField("tunniste", QVariant.Int)])
         temp_layer.updateFields()
         point_feature = QgsFeature()
         point_feature.setGeometry(
@@ -89,29 +89,29 @@ class DisplaceLine(SelectTool):
                 QgsPointXY(start_point.x() + change_x, start_point.y() + change_y)
             )
         )
-        point_feature.setAttributes(["1"])
+        point_feature.setAttributes([1])
         point_feature2 = QgsFeature()
         point_feature2.setGeometry(
             QgsGeometry.fromPointXY(
                 QgsPointXY(end_point.x() + change_x, end_point.y() + change_y)
             )
         )
-        point_feature2.setAttributes(["2"])
+        point_feature2.setAttributes([2])
         temp_layer_dataprovider.addFeature(point_feature)
         temp_layer_dataprovider.addFeature(point_feature2)
         temp_layer.updateExtents()
 
         line_params = {
             "INPUT": temp_layer,
-            "ORDER_EXPRESSION": "tunniste",
+            "ORDER_FIELD": "tunniste",
             "OUTPUT": "memory:",
         }
 
-        line_result = processing.run("native:pointstopath", line_params)
+        line_result = processing.run("qgis:pointstopath", line_params)
         result_layer = line_result["OUTPUT"]
         result_layer.setName(tr("Displaced line"))
         result_layer.renderer().symbol().setWidth(0.7)
-        result_layer.renderer().symbol().setColor(QColor.fromRgb(135, 206, 250))
+        result_layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
         QgsProject.instance().addMapLayer(result_layer)
 
         message_box = self._generate_question_messagebox()
@@ -127,7 +127,7 @@ class DisplaceLine(SelectTool):
             result_layer2 = line_result2["OUTPUT"]
             result_layer2.setName(tr("New version of the line layer"))
             result_layer2.renderer().symbol().setWidth(0.7)
-            result_layer2.renderer().symbol().setColor(QColor.fromRgb(135, 206, 250))
+            result_layer2.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
             QgsProject.instance().addMapLayer(result_layer2)
             QgsProject.instance().removeMapLayer(result_layer)
 

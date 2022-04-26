@@ -62,7 +62,7 @@ class ExplodeTool:
         explode_layer: QgsVectorLayer = explode_result["OUTPUT"]
         explode_layer.setName(tr("Exploded polygon to lines"))
         explode_layer.renderer().symbol().setWidth(0.7)
-        explode_layer.renderer().symbol().setColor(QColor.fromRgb(135, 206, 250))
+        explode_layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
         QgsProject.instance().addMapLayer(explode_layer)
 
         # If wanted, can be launched automatically by removing

@@ -129,6 +129,44 @@ class Plugin:
 
     def initGui(self) -> None:  # noqa N802
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
+        rectangular_action = self.add_action(
+            "",
+            text=tr("Rectangular mapping"),
+            callback=self.activate_rectangular_tool,
+            parent=self.iface.mainWindow(),
+            add_to_menu=False,
+            add_to_toolbar=True,
+        )
+        rectangular_action.setCheckable(True)
+        self.rectangular_tool.setAction(rectangular_action)
+        line_circle_action = self.add_action(
+            "",
+            text=tr("Intersect line and circle"),
+            callback=self.activate_intersection_tool_line_circle,
+            parent=self.iface.mainWindow(),
+            add_to_menu=False,
+            add_to_toolbar=True,
+        )
+        line_circle_action.setCheckable(True)
+        self.intersection_tool_line_circle.setAction(line_circle_action)
+        self.add_action(
+            "",
+            text=tr("Intersect lines"),
+            callback=self.activate_intersection_tool_lines,
+            parent=self.iface.mainWindow(),
+            add_to_menu=False,
+            add_to_toolbar=True,
+        )
+        displace_action = self.add_action(
+            "",
+            text=tr("Displace line"),
+            callback=self.activate_displace_line,
+            parent=self.iface.mainWindow(),
+            add_to_menu=False,
+            add_to_toolbar=True,
+        )
+        displace_action.setCheckable(True)
+        self.displace_line.setAction(displace_action)
         self.add_action(
             "",
             text=tr("Explode polygon"),
@@ -153,47 +191,9 @@ class Plugin:
             add_to_menu=False,
             add_to_toolbar=True,
         )
-        self.add_action(
-            "",
-            text=tr("Intersect lines"),
-            callback=self.activate_intersection_tool_lines,
-            parent=self.iface.mainWindow(),
-            add_to_menu=False,
-            add_to_toolbar=True,
-        )
-        displace_action = self.add_action(
-            "",
-            text=tr("Displace line"),
-            callback=self.activate_displace_line,
-            parent=self.iface.mainWindow(),
-            add_to_menu=False,
-            add_to_toolbar=True,
-        )
-        displace_action.setCheckable(True)
-        self.displace_line.setAction(displace_action)
-        line_circle_action = self.add_action(
-            "",
-            text=tr("Intersect line and circle"),
-            callback=self.activate_intersection_tool_line_circle,
-            parent=self.iface.mainWindow(),
-            add_to_menu=False,
-            add_to_toolbar=True,
-        )
-        line_circle_action.setCheckable(True)
-        self.intersection_tool_line_circle.setAction(line_circle_action)
-        rectangular_action = self.add_action(
-            "",
-            text=tr("Rectangular mapping"),
-            callback=self.activate_rectangular_tool,
-            parent=self.iface.mainWindow(),
-            add_to_menu=False,
-            add_to_toolbar=True,
-        )
-        rectangular_action.setCheckable(True)
-        self.rectangular_tool.setAction(rectangular_action)
         split_action = self.add_action(
             "",
-            text=tr("Split"),
+            text=tr("Split line"),
             callback=self.activate_split_tool,
             parent=self.iface.mainWindow(),
             add_to_menu=False,

@@ -229,6 +229,7 @@ class RectangularMapping(SelectTool):
         # Save the mapped point features to the file user has chosen
         if self.ui.get_output_file_path() != "":
             self._write_output_to_file(option_points_layer)
+            QgsProject.instance().removeMapLayer(option_points_layer)
 
     def _get_selected_line_coords(self, event: QgsMapToolEmitPoint) -> List[Decimal]:
         """Store the coordinates of the selected line feature"""
@@ -539,7 +540,13 @@ class RectangularMapping(SelectTool):
         crs = self.layer.crs()
         layer.setCrs(crs)
         options_layer_dataprovider = layer.dataProvider()
-        options_layer_dataprovider.addAttributes([QgsField("id", QVariant.String)])
+        options_layer_dataprovider.addAttributes(
+            [
+                QgsField("id", QVariant.String),
+                QgsField("xcoord", QVariant.Double),
+                QgsField("ycoord", QVariant.Double),
+            ]
+        )
         layer.updateFields()
         if a_layer == 1:
             layer.setName(tr("Point A options"))
@@ -574,6 +581,9 @@ class RectangularMapping(SelectTool):
     ) -> None:
         """Adds new optional solution points to option point A
         layer, returns list of IDs of added features."""
+        x_coords = [float(point_coordinates_a[0]), float(point_coordinates_a[2])]
+        y_coords = [float(point_coordinates_a[1]), float(point_coordinates_a[3])]
+
         point_geometries_a: List[QgsPointXY] = []
         coordinates_iterator_a = iter(point_coordinates_a)
         for coordinate_a in coordinates_iterator_a:
@@ -584,7 +594,9 @@ class RectangularMapping(SelectTool):
         for i, point_a in enumerate(point_geometries_a):
             point_feature_a = QgsFeature()
             point_feature_a.setGeometry(QgsGeometry.fromPointXY(point_a))
-            point_feature_a.setAttributes([f"Point A opt {i + 1}"])
+            point_feature_a.setAttributes(
+                [f"Point A opt {i + 1}", round(x_coords[i], 3), round(y_coords[i], 3)]
+            )
             options_layer_a.addFeature(point_feature_a)
 
         options_layer_a.updateExtents()
@@ -603,6 +615,13 @@ class RectangularMapping(SelectTool):
         if not selected_corners:
             selected_corners = []
 
+        if len(selected_corners) == 1:
+            x_coords = [float(point_coordinates[0])]
+            y_coords = [float(point_coordinates[1])]
+        else:
+            x_coords = [float(point_coordinates[0]), float(point_coordinates[2])]
+            y_coords = [float(point_coordinates[1]), float(point_coordinates[3])]
+
         point_geometries: List[QgsPointXY] = []
         point_ids: List[int] = []
         coordinates_iterator = iter(point_coordinates)
@@ -616,12 +635,24 @@ class RectangularMapping(SelectTool):
             point_feature.setGeometry(QgsGeometry.fromPointXY(point))
 
             if len(selected_corners) == 0:
-                point_feature.setAttributes([f"Point B opt {i + 1}"])
+                point_feature.setAttributes(
+                    [
+                        f"Point B opt {i + 1}",
+                        round(x_coords[i], 3),
+                        round(y_coords[i], 3),
+                    ]
+                )
             elif len(selected_corners) == 1:
-                point_feature.setAttributes(["Corner 2"])
+                point_feature.setAttributes(
+                    ["Corner 2", round(x_coords[i], 3), round(y_coords[i], 3)]
+                )
             else:
                 point_feature.setAttributes(
-                    [f"Corner {len(selected_corners) + 1} opt {i + 1}"]
+                    [
+                        f"Corner {len(selected_corners) + 1} opt {i + 1}",
+                        round(x_coords[i], 3),
+                        round(y_coords[i], 3),
+                    ]
                 )
 
             options_layer.addFeature(point_feature)

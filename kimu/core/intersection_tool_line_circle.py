@@ -7,15 +7,19 @@ from qgis.core import (
     QgsFeature,
     QgsField,
     QgsGeometry,
+    QgsPalLayerSettings,
     QgsPointXY,
     QgsProject,
+    QgsTextBufferSettings,
+    QgsTextFormat,
     QgsVectorFileWriter,
     QgsVectorLayer,
+    QgsVectorLayerSimpleLabeling,
     QgsWkbTypes,
 )
 from qgis.gui import QgisInterface, QgsMapToolEmitPoint
 from qgis.PyQt.QtCore import QVariant
-from qgis.PyQt.QtGui import QColor
+from qgis.PyQt.QtGui import QColor, QFont
 from qgis.utils import iface
 
 from ..qgis_plugin_tools.tools.custom_logging import setup_logger
@@ -225,9 +229,12 @@ class IntersectionLineCircle(SelectTool):
         result_layer1 = QgsVectorLayer("Point", "temp", "memory")
         crs = self.layer.crs()
         result_layer1.setCrs(crs)
+
         result_layer1_dataprovider = result_layer1.dataProvider()
         result_layer1_dataprovider.addAttributes(
-            [QgsField("xcoord", QVariant.Double), QgsField("ycoord", QVariant.Double),
+            [QgsField("tunniste", QVariant.String),
+             QgsField("xcoord", QVariant.Double),
+             QgsField("ycoord", QVariant.Double),
              QgsField("centroid xcoord", QVariant.Double),
              QgsField("centroid ycoord", QVariant.Double)]
         )
@@ -237,15 +244,35 @@ class IntersectionLineCircle(SelectTool):
         f1 = QgsFeature()
         f1.setGeometry(QgsGeometry.fromPointXY(intersection_point1))
         f1.setAttributes(
-            [round(x_sol1, 3), round(y_sol1, 3),
+            ["Opt 1",
+             round(x_sol1, 3), round(y_sol1, 3),
              round(centroid_x, 3), round(centroid_y, 3)]
         )
         result_layer1_dataprovider.addFeature(f1)
         result_layer1.updateExtents()
+        result_layer1.triggerRepaint()
 
-        result_layer1.setName(tr("Intersection point 1"))
+        result_layer1.setName(tr("Intersection point"))
         result_layer1.renderer().symbol().setSize(2)
-        result_layer1.renderer().symbol().setColor(QColor.fromRgb(255, 255, 255))
+        result_layer1.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
+
+        layer_settings = QgsPalLayerSettings()
+        text_format = QgsTextFormat()
+        text_format.setFont(QFont("FreeMono", 10))
+        text_format.setSize(10)
+        buffer_settings = QgsTextBufferSettings()
+        buffer_settings.setEnabled(True)
+        buffer_settings.setSize(0.1)
+        buffer_settings.setColor(QColor("black"))
+        text_format.setBuffer(buffer_settings)
+        layer_settings.setFormat(text_format)
+        layer_settings.fieldName = "tunniste"
+        layer_settings.placement = 0
+        layer_settings.dist = 2.0
+        layer_settings.enabled = True
+        layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
+        result_layer1.setLabelsEnabled(True)
+        result_layer1.setLabeling(layer_settings)
 
         QgsProject.instance().addMapLayer(result_layer1)
 
@@ -254,52 +281,44 @@ class IntersectionLineCircle(SelectTool):
         # only one intersection point exists. Thus there is
         # no need for second result layer
         if x_sol1 == x_sol2:
+            # Save the mapped point features to the file user has chosen
+            if self.ui.get_output_file_path() != "":
+                self._write_output_to_file(result_layer1)
+                QgsProject.instance().removeMapLayer(result_layer1)
             return
 
-        result_layer2 = QgsVectorLayer("Point", "temp", "memory")
-        result_layer2.setCrs(crs)
-        result_layer2_dataprovider = result_layer2.dataProvider()
-        result_layer2_dataprovider.addAttributes(
-            [QgsField("xcoord", QVariant.Double), QgsField("ycoord", QVariant.Double),
-             QgsField("centroid xcoord", QVariant.Double),
-             QgsField("centroid ycoord", QVariant.Double)]
-        )
-        result_layer2.updateFields()
+        result_layer1.startEditing()
+
         intersection_point2 = QgsPointXY(x_sol2, y_sol2)
         f2 = QgsFeature()
         f2.setGeometry(QgsGeometry.fromPointXY(intersection_point2))
         f2.setAttributes(
-            [round(x_sol2, 3), round(y_sol2, 3),
+            ["Opt 2",
+             round(x_sol2, 3), round(y_sol2, 3),
              round(centroid_x, 3), round(centroid_y, 3)]
         )
-        result_layer2_dataprovider.addFeature(f2)
-        result_layer2.updateExtents()
-
-        result_layer2.setName(tr("Intersection point 2"))
-        result_layer2.renderer().symbol().setSize(2)
-        result_layer2.renderer().symbol().setColor(QColor.fromRgb(0, 0, 0))
-
-        QgsProject.instance().addMapLayer(result_layer2)
+        result_layer1_dataprovider.addFeature(f2)
+        result_layer1.updateExtents()
 
         # Let's decide which solution point is the desired one
         message_box = QMessageBox()
-        message_box.setText(tr("Do you want to choose intersection point 1?"))
+        message_box.setText(
+            tr("Do you want to choose option 1 for the intersection point?")
+        )
         message_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
         ret_a = message_box.exec()
         if ret_a == QMessageBox.Yes:
-            # Let's remove the scratch layer related to the
-            # not-selected solution point
-            QgsProject.instance().removeMapLayer(result_layer2)
-            # Save the mapped point features to the file user has chosen
-            if self.ui.get_output_file_path() != "":
-                self._write_output_to_file(result_layer1)
+            # Let's remove the not-selected solution point
+            result_layer1.deleteFeature(f2.id())
         else:
-            # Let's remove the scratch layer related to the
-            # not-selected solution point
+            # Let's remove the not-selected solution point
+            result_layer1.deleteFeature(f1.id())
+        result_layer1.commitChanges()
+        iface.vectorLayerTools().stopEditing(result_layer1)
+        # Save the mapped point features to the file user has chosen
+        if self.ui.get_output_file_path() != "":
+            self._write_output_to_file(result_layer1)
             QgsProject.instance().removeMapLayer(result_layer1)
-            # Save the mapped point features to the file user has chosen
-            if self.ui.get_output_file_path() != "":
-                self._write_output_to_file(result_layer2)
 
     def _intersect(self, geometry: QgsGeometry, centroid: List[Decimal]) -> None:
         """Determine the intersection point(s) of the selected
