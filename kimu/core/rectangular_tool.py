@@ -56,11 +56,15 @@ class RectangularMapping(SelectTool):
         # Determine parameter values for solving the quadratic equation in hand
         parameters = self._calculate_parameters(selected_line_coords)
 
-        # Let's locate alternative solutions for point A
-        try:
-            points_a = self._locate_point_a(selected_line_coords, parameters)
-        except IndexError:
-            return
+        # a_measure is given in crs units (meters for EPSG: 3067)
+        if Decimal(self.ui.get_a_measure()) != Decimal("0.000"):
+            # Let's locate alternative solutions for point A
+            try:
+                points_a = self._locate_point_a(selected_line_coords, parameters)
+            except IndexError:
+                return
+        else:
+            points_a = [selected_line_coords[0], selected_line_coords[1]]
 
         if points_a == []:
             LOGGER.warning(
@@ -77,14 +81,18 @@ class RectangularMapping(SelectTool):
         option_points_layer_a.startEditing()
         self._add_option_points_to_layer_a(points_a, option_points_layer_a)
 
-        message_box_a = QMessageBox()
-        message_box_a.setText(tr("Do you want to choose option 1 for point A?"))
-        message_box_a.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-        ret_a = message_box_a.exec()
-        if ret_a == QMessageBox.Yes:
-            point_a = [points_a[0], points_a[1]]
+        # a_measure is given in crs units (meters for EPSG: 3067)
+        if Decimal(self.ui.get_a_measure()) > Decimal("0.000"):
+            message_box_a = QMessageBox()
+            message_box_a.setText(tr("Do you want to choose option 1 for point A?"))
+            message_box_a.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            ret_a = message_box_a.exec()
+            if ret_a == QMessageBox.Yes:
+                point_a = [points_a[0], points_a[1]]
+            else:
+                point_a = [points_a[2], points_a[3]]
         else:
-            point_a = [points_a[2], points_a[3]]
+            point_a = [points_a[0], points_a[1]]
 
         option_points_layer_a.commitChanges()
         iface.vectorLayerTools().stopEditing(option_points_layer_a)
@@ -96,13 +104,16 @@ class RectangularMapping(SelectTool):
         # every mapped corner point
         option_points_layer = self._create_optional_points_layer(0)
         QgsProject.instance().addMapLayer(option_points_layer)
-        option_points_layer.startEditing()
 
-        # Let's locate alternative solutions for point B
-        try:
-            points_b = self._locate_point_b(selected_line_coords, point_a)
-        except IndexError:
-            return
+        # b_measure is given in crs units (meters for EPSG: 3067)
+        if Decimal(self.ui.get_b_measure()) != Decimal("0.000"):
+            # Let's locate alternative solutions for point B
+            try:
+                points_b = self._locate_point_b(selected_line_coords, point_a)
+            except IndexError:
+                return
+        else:
+            points_b = point_a.copy()
 
         if points_b == []:
             LOGGER.warning(
@@ -111,23 +122,31 @@ class RectangularMapping(SelectTool):
             )
             return
 
+        option_points_layer.startEditing()
         option_point_ids = self._add_option_points_to_layer(
             points_b, option_points_layer
         )
 
-        # Let's ask the user which is the desired solution point
-        message_box = self._generate_option_point_messagebox(1)
-        ret = message_box.exec()
-        if ret == QMessageBox.Yes:
+        # b_measure is given in crs units (meters for EPSG: 3067)
+        if Decimal(self.ui.get_b_measure()) > Decimal("0.000"):
+            # Let's ask the user which is the desired solution point
+            message_box = self._generate_option_point_messagebox(1)
+            ret = message_box.exec()
+            if ret == QMessageBox.Yes:
+                # Let's add the point user chose to the list of
+                # selected corner points
+                selected_corners = [[points_b[0], points_b[1]]]
+                # Let's add the id of not chosen point to the
+                # list of features we will delete later
+                option_points_to_delete = [option_point_ids[1]]
+            else:
+                selected_corners = [[points_b[2], points_b[3]]]
+                option_points_to_delete = [option_point_ids[0]]
+        else:
             # Let's add the point user chose to the list of
             # selected corner points
             selected_corners = [[points_b[0], points_b[1]]]
-            # Let's add the id of not chosen point to the
-            # list of features we will delete later
-            option_points_to_delete = [option_point_ids[1]]
-        else:
-            selected_corners = [[points_b[2], points_b[3]]]
-            option_points_to_delete = [option_point_ids[0]]
+            option_points_to_delete = []
 
         point_b = selected_corners[0]
 
@@ -146,6 +165,8 @@ class RectangularMapping(SelectTool):
                     # a building has to the selected boundary line. In practice
                     # this means that we do not have to ask the user which point
                     # he prefers.
+                    if point_a == point_b:
+                        point_a = [selected_line_coords[2], selected_line_coords[3]]
                     point_c = self._locate_point_c(c_measure, point_a, point_b)
 
                     if point_c == []:
@@ -195,14 +216,22 @@ class RectangularMapping(SelectTool):
                         selected_corners.append(
                             [new_corner_points[2], new_corner_points[3]]
                         )
-                        option_points_to_delete.append(option_point_ids[3])
+                        if len(points_b) > 2:
+                            option_points_to_delete.append(option_point_ids[3])
+                        else:
+                            option_points_to_delete.append(option_point_ids[2])
                     else:
                         selected_corners.append(
                             [new_corner_points[2], new_corner_points[3]]
                         )
-                        option_points_to_delete.append(
-                            option_point_ids[2 + (i * 2 - 1)]
-                        )
+                        if len(points_b) > 2:
+                            option_points_to_delete.append(
+                                option_point_ids[2 + (i * 2 - 1)]
+                            )
+                        else:
+                            option_points_to_delete.append(
+                                option_point_ids[1 + (i * 2 - 1)]
+                            )
                 elif (
                     ret == QMessageBox.Yes
                     and [new_corner_points[0], new_corner_points[1]]
@@ -212,17 +241,28 @@ class RectangularMapping(SelectTool):
                         selected_corners.append(
                             [new_corner_points[0], new_corner_points[1]]
                         )
-                        option_points_to_delete.append(option_point_ids[4])
+                        if len(points_b) > 2:
+                            option_points_to_delete.append(option_point_ids[4])
+                        else:
+                            option_points_to_delete.append(option_point_ids[3])
                     else:
                         selected_corners.append(
                             [new_corner_points[0], new_corner_points[1]]
                         )
-                        option_points_to_delete.append(option_point_ids[2 + (i * 2)])
+                        if len(points_b) > 2:
+                            option_points_to_delete.append(
+                                option_point_ids[2 + (i * 2)]
+                            )
+                        else:
+                            option_points_to_delete.append(
+                                option_point_ids[1 + (i * 2)]
+                            )
                 else:
                     pass
 
         # Delete the features user did not select
-        option_points_layer.deleteFeatures(option_points_to_delete)
+        if option_points_to_delete != []:
+            option_points_layer.deleteFeatures(option_points_to_delete)
         option_points_layer.commitChanges()
         iface.vectorLayerTools().stopEditing(option_points_layer)
 
@@ -359,6 +399,7 @@ class RectangularMapping(SelectTool):
             parameters[1] ** Decimal("2.0")
             - Decimal("4.0") * parameters[0] * parameters[2]
         )
+
         if sqrt_in < 0.0 or parameters[0] == 0.0:
             LOGGER.warning(
                 tr(
@@ -581,8 +622,12 @@ class RectangularMapping(SelectTool):
     ) -> None:
         """Adds new optional solution points to option point A
         layer, returns list of IDs of added features."""
-        x_coords = [float(point_coordinates_a[0]), float(point_coordinates_a[2])]
-        y_coords = [float(point_coordinates_a[1]), float(point_coordinates_a[3])]
+        if len(point_coordinates_a) > 2:
+            x_coords = [float(point_coordinates_a[0]), float(point_coordinates_a[2])]
+            y_coords = [float(point_coordinates_a[1]), float(point_coordinates_a[3])]
+        else:
+            x_coords = [float(point_coordinates_a[0])]
+            y_coords = [float(point_coordinates_a[1])]
 
         point_geometries_a: List[QgsPointXY] = []
         coordinates_iterator_a = iter(point_coordinates_a)
@@ -615,7 +660,7 @@ class RectangularMapping(SelectTool):
         if not selected_corners:
             selected_corners = []
 
-        if len(selected_corners) == 1:
+        if len(selected_corners) == 1 or len(point_coordinates) <= 2:
             x_coords = [float(point_coordinates[0])]
             y_coords = [float(point_coordinates[1])]
         else:
