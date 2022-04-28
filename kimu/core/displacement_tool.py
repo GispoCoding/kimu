@@ -1,3 +1,5 @@
+import math
+from decimal import Decimal
 from typing import List
 
 from PyQt5.QtCore import Qt
@@ -15,6 +17,7 @@ from qgis.core import (
 from qgis.gui import QgisInterface, QgsMapMouseEvent, QgsMapToolIdentify
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor
+from qgis.utils import iface
 
 from ..qgis_plugin_tools.tools.custom_logging import setup_logger
 from ..qgis_plugin_tools.tools.i18n import tr
@@ -74,8 +77,39 @@ class DisplaceLine(SelectTool):
         start_point = QgsPointXY(line_feat[0])
         end_point = QgsPointXY(line_feat[-1])
 
-        change_x = self.ui.get_x_displacement()
-        change_y = self.ui.get_y_displacement()
+        # Determine parameter values for solving the quadratic equation in hand
+        selected_line_coords = [
+            Decimal(start_point.x()),
+            Decimal(start_point.y()),
+            Decimal(end_point.x()),
+            Decimal(end_point.y()),
+        ]
+
+        point1 = [Decimal(start_point.x()), Decimal(start_point.y())]
+        point2 = [Decimal(end_point.x()), Decimal(end_point.y())]
+
+        new_coord1 = self._calculate_new_coordinates(selected_line_coords, point1)
+        new_coord2 = self._calculate_new_coordinates(selected_line_coords, point2)
+
+        # Check that the solution points lie in the
+        # map canvas extent
+        extent = iface.mapCanvas().extent()
+
+        if (
+            new_coord1[0] < extent.xMinimum()
+            or new_coord1[0] > extent.xMaximum()
+            or new_coord1[1] < extent.yMinimum()
+            or new_coord1[1] > extent.yMaximum()
+            or new_coord2[0] < extent.xMinimum()
+            or new_coord2[0] > extent.xMaximum()
+            or new_coord2[1] < extent.yMinimum()
+            or new_coord2[1] > extent.yMaximum()
+        ):
+            LOGGER.warning(
+                tr("Displaced line lies outside of the map canvas!"),
+                extra={"details": ""},
+            )
+            return
 
         temp_layer = QgsVectorLayer("Point", "temp", "memory")
         crs = selected_layer.crs()
@@ -85,16 +119,12 @@ class DisplaceLine(SelectTool):
         temp_layer.updateFields()
         point_feature = QgsFeature()
         point_feature.setGeometry(
-            QgsGeometry.fromPointXY(
-                QgsPointXY(start_point.x() + change_x, start_point.y() + change_y)
-            )
+            QgsGeometry.fromPointXY(QgsPointXY(new_coord1[0], new_coord1[1]))
         )
         point_feature.setAttributes([1])
         point_feature2 = QgsFeature()
         point_feature2.setGeometry(
-            QgsGeometry.fromPointXY(
-                QgsPointXY(end_point.x() + change_x, end_point.y() + change_y)
-            )
+            QgsGeometry.fromPointXY(QgsPointXY(new_coord2[0], new_coord2[1]))
         )
         point_feature2.setAttributes([2])
         temp_layer_dataprovider.addFeature(point_feature)
@@ -125,10 +155,18 @@ class DisplaceLine(SelectTool):
 
             line_result2 = processing.run("native:union", line_params2)
             result_layer2 = line_result2["OUTPUT"]
-            result_layer2.setName(tr("New version of the line layer"))
-            result_layer2.renderer().symbol().setWidth(0.7)
-            result_layer2.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
-            QgsProject.instance().addMapLayer(result_layer2)
+
+            line_params3 = {
+                "INPUT": result_layer2,
+                "OUTPUT": "memory:",
+            }
+
+            line_result3 = processing.run("native:explodelines", line_params3)
+            result_layer3 = line_result3["OUTPUT"]
+            result_layer3.setName(tr("New version of the line layer"))
+            result_layer3.renderer().symbol().setWidth(0.7)
+            result_layer3.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
+            QgsProject.instance().addMapLayer(result_layer3)
             QgsProject.instance().removeMapLayer(result_layer)
 
     def _identify_and_extract_single_geometry(
@@ -149,6 +187,41 @@ class DisplaceLine(SelectTool):
         )
         geometry: QgsGeometry = found_features[0].mFeature.geometry()
         return geometry
+
+    def _calculate_new_coordinates(
+        self, line_coords: List[Decimal], old_point: List[Decimal]
+    ) -> List[float]:
+        """Calculate new coordinates""" ""
+
+        d = Decimal(self.ui.get_displacement())
+
+        a = (line_coords[3] - line_coords[1]) / (line_coords[2] - line_coords[0])
+        b = Decimal("-1.0")
+        c = line_coords[1] - line_coords[0] * (
+            (line_coords[3] - line_coords[1]) / (line_coords[2] - line_coords[0])
+        )
+
+        x_new1 = (
+            d
+            * Decimal(math.sqrt(a ** Decimal("2.0") + b ** Decimal("2.0")))
+            * (line_coords[3] - line_coords[1])
+            - b * old_point[1] * (line_coords[3] - line_coords[1])
+            - b * line_coords[2] * old_point[0]
+            + b * line_coords[0] * old_point[0]
+            - c * (line_coords[3] - line_coords[1])
+        ) / (
+            a * (line_coords[3] - line_coords[1])
+            + b * (line_coords[0] - line_coords[2])
+        )
+
+        y_new1 = (
+            ((line_coords[2] - line_coords[0]) * (old_point[0] - x_new1))
+            / (line_coords[3] - line_coords[1])
+        ) + old_point[1]
+
+        new_coords = [float(x_new1), float(y_new1)]
+
+        return new_coords
 
     @staticmethod
     def _generate_question_messagebox() -> QMessageBox:

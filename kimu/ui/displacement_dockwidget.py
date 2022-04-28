@@ -13,10 +13,6 @@ class DisplacementDockWidget(QtWidgets.QDockWidget, FORM_CLASS):  # type: ignore
         self.setupUi(self)
         self.iface = iface
 
-    def get_x_displacement(self) -> float:
-        self.doublespinbox_x: QgsDoubleSpinBox
-        return self.doublespinbox_x.value()
-
-    def get_y_displacement(self) -> float:
-        self.doublespinbox_y: QgsDoubleSpinBox
-        return self.doublespinbox_y.value()
+    def get_displacement(self) -> float:
+        self.doublespinbox: QgsDoubleSpinBox
+        return self.doublespinbox.value()
