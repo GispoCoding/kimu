@@ -37,13 +37,15 @@ As a result, a new toolbar emerges:
 1. Make sure that you have a polygon layer active in the Layers panel.
 2. Utilize QGIS's selection tools to select the feature(s) you wish to explode (from the currently active layer):
 ![QGIS's selection toolbar](/images/qgis_selection_tools.png "QGIS's selection toolbar")
-Note that it is possible to select all the features in the layer, too!
+
+- It is possible to select all the features in the layer, too!
 3.Click Explode polygon button.
 
 In action:
+
 ![Explode polygon](/images/explode_polygon.gif "Explode polygon")
 
-**Note** that in QGIS, a temporary scratch file can easily be exported and made permanent.
+**Note.** In QGIS, a temporary scratch file can easily be exported and made permanent.
 
 ### Explode line(s)
 
