@@ -7,6 +7,62 @@
 [![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 
+This QGIS3 plugin containing geodesic tools and is developed for
+- rectangular mapping
+- finding intersection point of a line and a circle
+- finding intersection point of two lines
+- displacing a line feature
+
+In addition to these main functionalities the plugin contains tools for data manipulation (e.g. explode polygon to lines or split a line).
+
+Please report issues preferably to Issues or to info@gispo.fi. The plugin is not actively developed, but if you want to support the development or request a feature, do not hesitate to contact us.
+
+Developed by **Gispo Ltd**.
+
+## Installation instructions
+
+1. Via official QGIS plugin repository: Launch QGIS and navigate to the plugins menu by selecting Plugins > Manage and Install Plugins from the top menu.
+Go to All tab and search for Geodesic Tools and click Install Plugin!
+
+2. From ZIP-file: Navigate to Releases and under the newest release's Assets section click kimu.Va.b.z.zip in order to download the plugin as a ZIP file.
+Lauch QGIS and navigate to plugins menu (as in 1), but this time, go to Install from ZIP tab, set the correct path to the ZIP file you just downloaded and click Install Plugin!
+
+As a result, a new toolbar emerges:
+![plugin toolbar](/images/plugin_toolbar.png "Plugin toolbar")
+
+## Usage
+
+### Explode polygon
+
+1. Make sure that you have a polygon layer active in the Layers panel.
+2. Utilize QGIS's selection tools to select the feature(s) you wish to explode (from the currently active layer):
+![QGIS's selection toolbar](/images/qgis_selection_tools.png "QGIS's selection toolbar")
+Note that it is possible to select all the features in the layer, too!
+3.Click Explode polygon button.
+
+In action:
+![Explode polygon](/images/explode_polygon.gif "Explode polygon")
+
+**Note** that in QGIS, a temporary scratch file can easily be exported and made permanent.
+
+### Explode line(s)
+
+1. Make sure that you have a line layer active in the Layers panel.
+2. Utilize QGIS's selection tools to select the feature(s) you wish to explode (from the currently active layer):
+![QGIS's selection toolbar](/images/qgis_selection_tools.png "QGIS's selection toolbar")
+Note that it is possible to select all the features in the layer, too!
+3.Click Explode line(s) button.
+
+In action:
+
+
+Note that in QGIS, a temporary scratch file can easily be exported and made permanent.
+
+### Rectangular mapping
+
+Tool in action:
+
+
 ### Development
 
 Refer to [development](docs/development.md) for developing this QGIS3 plugin.
