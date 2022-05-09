@@ -32,6 +32,14 @@ As a result, a new toolbar emerges:
 
 ## Usage
 
+### Rectangular mapping
+
+### Intersect line and circle
+
+### Intersect lines
+
+### Displace line
+
 ### Explode polygon
 
 1. Make sure that you have a polygon layer active in the Layers panel.
@@ -52,20 +60,42 @@ In action:
 1. Make sure that you have a line layer active in the Layers panel.
 2. Utilize QGIS's selection tools to select the feature(s) you wish to explode (from the currently active layer):
 ![QGIS's selection toolbar](/images/qgis_selection_tools.png "QGIS's selection toolbar")
-Note that it is possible to select all the features in the layer, too!
+
+- It is possible to select all the features in the layer, too!
 3.Click Explode line(s) button.
 
 In action:
+![Explode lines](/images/explode_lines.gif "Explode lines")
 
+**Note.** In QGIS, a temporary scratch file can easily be exported and made permanent.
 
-Note that in QGIS, a temporary scratch file can easily be exported and made permanent.
+### Explode line(s) to points
 
-### Rectangular mapping
+1. Make sure that you have a line layer active in the Layers panel.
+2. Utilize QGIS's selection tools to select the feature(s) you wish to explode (from the currently active layer):
+![QGIS's selection toolbar](/images/qgis_selection_tools.png "QGIS's selection toolbar")
 
-Tool in action:
+- It is possible to select all the features in the layer, too!
+3.Click Explode line(s) to points button.
 
+In action:
+![Explode line to points](/images/explode_lines_to_points.gif "Explode line to points")
 
-### Development
+**Note.** In QGIS, a temporary scratch file can easily be exported and made permanent.
+
+### Split line
+
+1. Make sure that you have a line layer active in the Layers panel.
+2. Click Split line button -> the panel opens up into the right side of the QGIS.
+3. In the panel, insert a value determining into how many equally long pieces you wish the selected line feature to split. Press Enter.
+4. Click the line feature you wish to split.
+
+In action:
+![Split line](/images/split_line.gif "Split line")
+
+**Note.** In QGIS, a temporary scratch file can easily be exported and made permanent.
+
+## Development
 
 Refer to [development](docs/development.md) for developing this QGIS3 plugin.
 
