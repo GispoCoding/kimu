@@ -139,6 +139,8 @@ of the original line feature
 
 In action:
 ![Displace line](/images/displace_line.gif "Displace line")
+or
+![Displace line 2](/images/displace_line2.gif "Displace line 2")
 
 **Note.** In QGIS, a temporary scratch file can easily be exported and made permanent.
 
