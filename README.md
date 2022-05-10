@@ -73,6 +73,7 @@ rectangular mapping.
 8. Answer to the questions the tool asks from you via a pop-up window.
 
 In action:
+
 ![Rectangular mapping](/images/rectangular_mapping.gif "Rectangular mapping")
 
 **Note.** The tool automatically enables suitable snapping configurations.
@@ -99,6 +100,7 @@ In action:
 - If the line does not genuinely intersect with the implicitly defined circle (just touches it), the tool does not ask any questions but automatically produces the resulting scratch layer
 
 In action:
+
 ![Intersect line and circle](/images/intersect_line_circle.gif "Intersect line and circle")
 
 **Note.** The tool automatically enables suitable snapping configurations. However, if you want to be sure that QGIS snapped onto the right point feature / vertex point
@@ -118,6 +120,7 @@ Vector > Data Management Tools and use Merge Vector Layers tool
 3.Click Intersect lines button.
 
 In action:
+
 ![Intersect lines](/images/intersect_lines.gif "Intersect lines")
 
 **Note.** In QGIS, a temporary scratch file can easily be exported and made permanent.
