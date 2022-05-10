@@ -1,4 +1,4 @@
-# KiMu
+# Geodesic Tools
 ![tests](https://github.com/GispoCoding/kimu/workflows/Tests/badge.svg)
 [![codecov.io](https://codecov.io/github/GispoCoding/kimu/coverage.svg?branch=master)](https://codecov.io/github/GispoCoding/kimu?branch=master)
 ![release](https://github.com/GispoCoding/kimu/workflows/Release/badge.svg)
