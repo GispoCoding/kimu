@@ -69,9 +69,7 @@ class ExplodeTool:
         point_layer = point_result["OUTPUT"]
 
         point_params = {"INPUT": point_layer, "OUTPUT": "memory:"}
-        point_result2 = processing.run(
-            "native:deleteduplicategeometries", point_params
-        )
+        point_result2 = processing.run("native:deleteduplicategeometries", point_params)
 
         point_layer2: QgsVectorLayer = point_result2["OUTPUT"]
         point_layer2.setName(tr("Vertex points of the exploded polygon"))
