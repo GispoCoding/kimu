@@ -29,33 +29,38 @@ LOGGER = setup_logger(plugin_name())
 
 
 class IntersectionLines:
-    @staticmethod
-    def __check_valid_layer(layer: QgsVectorLayer) -> bool:
-        """Checks if layer is valid"""
-        if (
-            isinstance(layer, QgsVectorLayer)
-            and layer.isSpatial()
-            and layer.geometryType() == QgsWkbTypes.LineGeometry
-        ):
-            return True
-        return False
-
     def select_output_file(self) -> None:
+        """Specifies the output file."""
         filename, _filter = QFileDialog.getOpenFileName(
             self.dlg, "Select file to save the intersection point in", "", '*.*'
         )
         self.dlg.lineEdit.setText(filename)
 
-    def _run_initial_checks(self) -> None:
+    def _run_initial_checks(self) -> bool:
+        """Checks that the selections made are applicable."""
         selected_layer = iface.activeLayer()
 
-        if not self.__check_valid_layer(selected_layer):
-            LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
-            return
+        if (
+            isinstance(selected_layer, QgsVectorLayer)
+            and selected_layer.isSpatial()
+            and selected_layer.geometryType() == QgsWkbTypes.LineGeometry
+        ):
+            status = True
+        else:
+            LOGGER.warning(tr("Please select a line layer"),
+                           extra={"details": ""},)
+            status = False
+
+        if len(selected_layer.selectedFeatures()) != 2 and status == True:
+            LOGGER.warning(
+                tr("Please select two line features from same layer"),
+                extra={"details": ""},
+            )
+            status = False
 
         if QgsWkbTypes.isSingleType(
             list(selected_layer.getFeatures())[0].geometry().wkbType()
-        ):
+        ) or status == False:
             pass
         else:
             LOGGER.warning(
@@ -66,14 +71,7 @@ class IntersectionLines:
                 ),
                 extra={"details": ""},
             )
-            return
-
-        if len(selected_layer.selectedFeatures()) != 2:
-            LOGGER.warning(
-                tr("Please select two line features from same layer"),
-                extra={"details": ""},
-            )
-            return
+            status = False
 
         temp_layer = selected_layer.materialize(
             QgsFeatureRequest().setFilterFids(selected_layer.selectedFeatureIds())
@@ -82,16 +80,17 @@ class IntersectionLines:
         vertices = processing.run("native:extractvertices", params1)
         vertices_layer = vertices["OUTPUT"]
 
-        if vertices_layer.featureCount() > 4:
+        if vertices_layer.featureCount() > 4 and status == True:
             LOGGER.warning(
                 tr("Please use Explode line(s) tool first!"), extra={"details": ""}
             )
-            return
+            status = False
+
+        return status
 
 
     def _check_not_parallel(self, point_coords: List[Decimal]) -> None:
-        # Check that the selected line features are not parallel by
-        # calculating the slopes of the selected lines
+        """Checks that the selected line features are not parallel."""
         slope1 = (point_coords[3] - point_coords[1]) / (point_coords[2] - point_coords[0])
         slope2 = (point_coords[7] - point_coords[5]) / (point_coords[6] - point_coords[4])
         if slope1 == slope2:
@@ -103,6 +102,7 @@ class IntersectionLines:
 
 
     def _calculate_coords(self, point_coords: List[Decimal]) -> List[Decimal]:
+        """Finds out the coordinate values of the intersection point."""
         # 1. Determine the functions of the straight lines each
         # of the selected line features represent (each line can
         # be seen as a limited representation of a function determining
@@ -161,7 +161,7 @@ class IntersectionLines:
 
 
     def run(self) -> None:
-        """Determines the intersection point of the selected line features."""
+        """Main method."""
         self.dlg = IntersectLinesDialog(iface)
         self.dlg.pushButton.clicked.connect(self.select_output_file)
         self.dlg.show()
@@ -169,109 +169,107 @@ class IntersectionLines:
         # Run the dialog event loop
         result = self.dlg.exec_()
 
-        # See if OK was pressed
-        if result:
-            self._run_initial_checks()
-            selected_layer = iface.activeLayer()
+        selected_layer = iface.activeLayer()
 
-            line_points = []
+        if self._run_initial_checks() == True:
+            # See if user wants to save result into a file
+            if result:
+                line_points = []
 
-            features = selected_layer.selectedFeatures()
-            for feat in features:
-                line_feat = feat.geometry().asPolyline()
-                start_point = QgsPointXY(line_feat[0])
-                end_point = QgsPointXY(line_feat[-1])
-                line_points.extend(
+                features = selected_layer.selectedFeatures()
+                for feat in features:
+                    line_feat = feat.geometry().asPolyline()
+                    start_point = QgsPointXY(line_feat[0])
+                    end_point = QgsPointXY(line_feat[-1])
+                    line_points.extend(
+                        [
+                            decimal.Decimal(start_point.x()),
+                            decimal.Decimal(start_point.y()),
+                            decimal.Decimal(end_point.x()),
+                            decimal.Decimal(end_point.y()),
+                        ]
+                    )
+
+                self._check_not_parallel(line_points)
+
+                coords = self._calculate_coords(line_points)
+                layer = QgsVectorLayer("Point", "temp", "memory")
+                selected_layer = iface.activeLayer()
+                crs = selected_layer.crs()
+                layer.setCrs(crs)
+                options_layer_dataprovider = layer.dataProvider()
+                options_layer_dataprovider.addAttributes(
                     [
-                        decimal.Decimal(start_point.x()),
-                        decimal.Decimal(start_point.y()),
-                        decimal.Decimal(end_point.x()),
-                        decimal.Decimal(end_point.y()),
+                        QgsField("xcoord", QVariant.Double),
+                        QgsField("ycoord", QVariant.Double),
                     ]
                 )
+                layer.updateFields()
+                layer.startEditing()
 
-            self._check_not_parallel(line_points)
-
-            coords = self._calculate_coords(line_points)
-            layer = QgsVectorLayer("Point", "temp", "memory")
-            selected_layer = iface.activeLayer()
-            crs = selected_layer.crs()
-            layer.setCrs(crs)
-            options_layer_dataprovider = layer.dataProvider()
-            options_layer_dataprovider.addAttributes(
-                [
-                    QgsField("xcoord", QVariant.Double),
-                    QgsField("ycoord", QVariant.Double),
-                ]
-            )
-            layer.updateFields()
-            layer.startEditing()
-
-            point = QgsPointXY(float(coords[0]), float(coords[1]))
-            point_feature = QgsFeature()
-            point_feature.setGeometry(QgsGeometry.fromPointXY(point))
-            point_feature.setAttributes(
-                [round(coords[0], 3), round(coords[1], 3)]
-            )
-            layer.addFeature(point_feature)
-
-            layer.updateExtents()
-            layer.triggerRepaint()
-            layer.commitChanges()
-            iface.vectorLayerTools().stopEditing(layer)
-
-            filename = self.dlg.lineEdit.text()
-            writer_options = QgsVectorFileWriter.SaveVectorOptions()
-            writer_options.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
-            error, explanation = QgsVectorFileWriter.writeAsVectorFormatV2(
-                layer,
-                filename,
-                QgsProject.instance().transformContext(),
-                writer_options,
-            )
-
-            if error:
-                LOGGER.warning(
-                    tr(f"Error writing output to file, error code {error}"),
-                    extra={"details": tr(f"Details: {explanation}")},
+                point = QgsPointXY(float(coords[0]), float(coords[1]))
+                point_feature = QgsFeature()
+                point_feature.setGeometry(QgsGeometry.fromPointXY(point))
+                point_feature.setAttributes(
+                    [round(coords[0], 3), round(coords[1], 3)]
                 )
-        else:
-            selected_layer = iface.activeLayer()
-            self._run_initial_checks()
+                layer.addFeature(point_feature)
 
-            line_points = []
+                layer.updateExtents()
+                layer.triggerRepaint()
+                layer.commitChanges()
+                iface.vectorLayerTools().stopEditing(layer)
 
-            features = selected_layer.selectedFeatures()
-            for feat in features:
-                line_feat = feat.geometry().asPolyline()
-                start_point = QgsPointXY(line_feat[0])
-                end_point = QgsPointXY(line_feat[-1])
-                line_points.extend(
-                    [
-                        decimal.Decimal(start_point.x()),
-                        decimal.Decimal(start_point.y()),
-                        decimal.Decimal(end_point.x()),
-                        decimal.Decimal(end_point.y()),
-                    ]
+                filename = self.dlg.lineEdit.text()
+                writer_options = QgsVectorFileWriter.SaveVectorOptions()
+                writer_options.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
+                error, explanation = QgsVectorFileWriter.writeAsVectorFormatV2(
+                    layer,
+                    filename,
+                    QgsProject.instance().transformContext(),
+                    writer_options,
                 )
 
-            self._check_not_parallel(line_points)
-            result_layer = QgsVectorLayer("Point", "temp", "memory")
-            crs = selected_layer.crs()
-            result_layer.setCrs(crs)
-            result_layer_dataprovider = result_layer.dataProvider()
-            result_layer_dataprovider.addAttributes(
-                [QgsField("xcoord", QVariant.Double), QgsField("ycoord", QVariant.Double)]
-            )
-            result_layer.updateFields()
-            intersection_coords = self._calculate_coords(line_points)
-            intersection_point = QgsPointXY(intersection_coords[0], intersection_coords[1])
-            f = QgsFeature()
-            f.setGeometry(QgsGeometry.fromPointXY(intersection_point))
-            f.setAttributes([round(intersection_coords[0], 3), round(intersection_coords[1], 3)])
-            result_layer_dataprovider.addFeature(f)
-            result_layer.updateExtents()
-            result_layer.setName(tr("Intersection point"))
-            result_layer.renderer().symbol().setSize(2)
-            result_layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
-            QgsProject.instance().addMapLayer(result_layer)
+                if error:
+                    LOGGER.warning(
+                        tr(f"Error writing output to file, error code {error}"),
+                        extra={"details": tr(f"Details: {explanation}")},
+                    )
+                    return
+            else:
+                line_points = []
+
+                features = selected_layer.selectedFeatures()
+                for feat in features:
+                    line_feat = feat.geometry().asPolyline()
+                    start_point = QgsPointXY(line_feat[0])
+                    end_point = QgsPointXY(line_feat[-1])
+                    line_points.extend(
+                        [
+                            decimal.Decimal(start_point.x()),
+                            decimal.Decimal(start_point.y()),
+                            decimal.Decimal(end_point.x()),
+                            decimal.Decimal(end_point.y()),
+                        ]
+                    )
+
+                self._check_not_parallel(line_points)
+                result_layer = QgsVectorLayer("Point", "temp", "memory")
+                crs = selected_layer.crs()
+                result_layer.setCrs(crs)
+                result_layer_dataprovider = result_layer.dataProvider()
+                result_layer_dataprovider.addAttributes(
+                    [QgsField("xcoord", QVariant.Double), QgsField("ycoord", QVariant.Double)]
+                )
+                result_layer.updateFields()
+                intersection_coords = self._calculate_coords(line_points)
+                intersection_point = QgsPointXY(intersection_coords[0], intersection_coords[1])
+                f = QgsFeature()
+                f.setGeometry(QgsGeometry.fromPointXY(intersection_point))
+                f.setAttributes([round(intersection_coords[0], 3), round(intersection_coords[1], 3)])
+                result_layer_dataprovider.addFeature(f)
+                result_layer.updateExtents()
+                result_layer.setName(tr("Intersection point"))
+                result_layer.renderer().symbol().setSize(2)
+                result_layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
+                QgsProject.instance().addMapLayer(result_layer)
