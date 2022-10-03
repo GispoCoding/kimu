@@ -60,10 +60,22 @@ class ExplodeTool:
         explode_result = processing.run("native:explodelines", explode_params)
 
         explode_layer: QgsVectorLayer = explode_result["OUTPUT"]
-        explode_layer.setName(tr("Exploded polygon to lines"))
+        explode_layer.setName(tr("Vertices of the exploded polygon"))
         explode_layer.renderer().symbol().setWidth(0.7)
         explode_layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
         QgsProject.instance().addMapLayer(explode_layer)
+
+        point_result = processing.run("native:extractvertices", line_params)
+        point_layer = point_result["OUTPUT"]
+
+        point_params = {"INPUT": point_layer, "OUTPUT": "memory:"}
+        point_result2 = processing.run("native:deleteduplicategeometries", point_params)
+
+        point_layer2: QgsVectorLayer = point_result2["OUTPUT"]
+        point_layer2.setName(tr("Vertex points of the exploded polygon"))
+        point_layer2.renderer().symbol().setSize(2)
+        point_layer2.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
+        QgsProject.instance().addMapLayer(point_layer2)
 
         # If wanted, can be launched automatically by removing
         # the comments in this and plugin.py file
