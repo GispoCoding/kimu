@@ -3,8 +3,10 @@ from decimal import Decimal
 from typing import List
 
 from PyQt5.QtWidgets import QMessageBox
+from qgis import processing
 from qgis.core import (
     QgsFeature,
+    QgsFeatureRequest,
     QgsField,
     QgsGeometry,
     QgsPalLayerSettings,
@@ -39,13 +41,93 @@ class IntersectionLineCircle(SelectTool):
 
     def active_changed(self, layer: QgsVectorLayer) -> None:
         """Triggered when active layer changes."""
-        if (
-            isinstance(layer, QgsVectorLayer)
-            and layer.isSpatial()
-            and layer.geometryType() == QgsWkbTypes.LineGeometry
-        ):
-            self.layer = layer
-            self.setLayer(self.layer)
+        self.layer = layer
+        self.setLayer(self.layer)
+
+    def _run_initial_checks(self) -> bool:
+        """Checks that the selections made are applicable."""
+        selected_layer = iface.activeLayer()
+
+        if isinstance(selected_layer, QgsVectorLayer) and selected_layer.isSpatial():
+            pass
+        else:
+            LOGGER.warning(
+                tr("Please select a valid vector layer"),
+                extra={"details": ""},
+            )
+            return False
+
+        if selected_layer.geometryType() == QgsWkbTypes.LineGeometry:
+
+            if len(selected_layer.selectedFeatures()) != 1:
+                LOGGER.warning(
+                    tr("Please select only one line feature"),
+                    extra={"details": ""},
+                )
+                return False
+
+            if QgsWkbTypes.isSingleType(
+                list(selected_layer.getFeatures())[0].geometry().wkbType()
+            ):
+                pass
+            else:
+                LOGGER.warning(
+                    tr(
+                        "Please select a line layer with "
+                        "LineString geometries (instead "
+                        "of MultiLineString geometries)"
+                    ),
+                    extra={"details": ""},
+                )
+                return False
+
+            temp_layer = selected_layer.materialize(
+                QgsFeatureRequest().setFilterFids(selected_layer.selectedFeatureIds())
+            )
+            params1 = {"INPUT": temp_layer, "OUTPUT": "memory:"}
+            vertices = processing.run("native:extractvertices", params1)
+            vertices_layer = vertices["OUTPUT"]
+
+            if vertices_layer.featureCount() > 2:
+                LOGGER.warning(
+                    tr("Please use Explode line(s) tool first!"), extra={"details": ""}
+                )
+                return False
+
+        elif selected_layer.geometryType() == QgsWkbTypes.PointGeometry:
+
+            if len(selected_layer.selectedFeatures()) != 2:
+                LOGGER.warning(
+                    tr(
+                        "Please select two points in order to explicitly "
+                        "define a line feature"
+                    ),
+                    extra={"details": ""},
+                )
+                return False
+
+            if QgsWkbTypes.isSingleType(
+                list(selected_layer.getFeatures())[0].geometry().wkbType()
+            ):
+                pass
+            else:
+                LOGGER.warning(
+                    tr(
+                        "Please select a point layer with "
+                        "Point geometries (instead "
+                        "of MultiPoint geometries)"
+                    ),
+                    extra={"details": ""},
+                )
+                return False
+        else:
+            LOGGER.warning(
+                tr("Please select a point or line layer"),
+                extra={"details": ""},
+            )
+            return False
+
+        return True
 
     # fmt: off
     def canvasPressEvent(  # noqa: N802
@@ -54,38 +136,23 @@ class IntersectionLineCircle(SelectTool):
         # fmt: on
         """Canvas click event for storing centroid
         point of the circle."""
-        if self.iface.activeLayer() != self.layer:
-            LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
-            return
+        if self._run_initial_checks() is True:
+            # Snap the click to the closest point feature available.
+            # Note that your QGIS's snapping options have on effect
+            # on which objects / vertexes the tool will snap and
+            # get the coordinates of the point to be used as a circle centroid
+            centroid = ClickTool(self.iface).activate(event)
 
-        if QgsWkbTypes.isSingleType(
-            list(
-                self.iface.activeLayer().getFeatures()
-            )[0].geometry().wkbType()
-        ):
-            pass
-        else:
-            LOGGER.warning(
-                tr("Please select a line layer with "
-                   "LineString geometries (instead "
-                   "of MultiLineString geometries)"),
-                extra={"details": ""})
-            return
+            # Call for function extracting coordinate values attached to
+            # the line feature to be intersected with a circle
+            line_coords = self._get_line_coords()
 
-        if len(self.iface.activeLayer().selectedFeatures()) != 1:
-            LOGGER.warning(tr("Please select only one line"), extra={"details": ""})
-            return
+            # Call the functions capable of determining the parameter
+            # values needed to find out intersection point(s)
+            parameters = self._calculate_intersection_parameters(line_coords, centroid)
 
-        geometry = self.iface.activeLayer().selectedFeatures()[0].geometry()
-
-        # Snap the click to the closest point feature available.
-        # Note that your QGIS's snapping options have on effect
-        # on which objects / vertexes the tool will snap and
-        # get the coordinates of the point to be used as a circle centroid
-        centroid = ClickTool(self.iface).activate(event)
-
-        # Call for function determining the intersection point
-        self._intersect(geometry, centroid)
+            # Call for function determining the intersection point
+            self._intersect(line_coords, parameters, centroid)
 
     def _calculate_intersection_parameters(
         self, line_coords: List[Decimal], centroid: List[Decimal]
@@ -199,7 +266,7 @@ class IntersectionLineCircle(SelectTool):
         return result
 
     def _write_output_to_file(self, layer: QgsVectorLayer) -> None:
-        """Writes the selected corner points to a spesifed file"""
+        """Writes the selected corner points to a specified file"""
         output_file_path = self.ui.get_output_file_path()
         writer_options = QgsVectorFileWriter.SaveVectorOptions()
         writer_options.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
@@ -320,23 +387,43 @@ class IntersectionLineCircle(SelectTool):
             self._write_output_to_file(result_layer1)
             QgsProject.instance().removeMapLayer(result_layer1)
 
-    def _intersect(self, geometry: QgsGeometry, centroid: List[Decimal]) -> None:
+    def _get_line_coords(self) -> List[Decimal]:
+        """Extract start and end point coordinates which explicitly determine
+        the line feature intersecting with the user defined circle."""
+        if self.iface.activeLayer().geometryType() == QgsWkbTypes.LineGeometry:
+            geometry = self.iface.activeLayer().selectedFeatures()[0].geometry()
+            line_feat = geometry.asPolyline()
+            start_point = QgsPointXY(line_feat[0])
+            end_point = QgsPointXY(line_feat[-1])
+            line_coords = [
+                Decimal(start_point.x()),
+                Decimal(start_point.y()),
+                Decimal(end_point.x()),
+                Decimal(end_point.y()),
+            ]
+        else:
+            line_coords = [
+                Decimal(
+                    self.iface.activeLayer().selectedFeatures()[0].geometry().asPoint().x()
+                ),
+                Decimal(
+                    self.iface.activeLayer().selectedFeatures()[0].geometry().asPoint().y()
+                ),
+                Decimal(
+                    self.iface.activeLayer().selectedFeatures()[1].geometry().asPoint().x()
+                ),
+                Decimal(
+                    self.iface.activeLayer().selectedFeatures()[1].geometry().asPoint().y()
+                ),
+            ]
+
+        return line_coords
+
+    def _intersect(
+        self, line_coords: List[Decimal], parameters: List[Decimal], centroid: List[Decimal]
+    ) -> None:
         """Determine the intersection point(s) of the selected
         line and implicitly determined (centroid+radius) circle."""
-
-        line_feat = geometry.asPolyline()
-        start_point = QgsPointXY(line_feat[0])
-        end_point = QgsPointXY(line_feat[-1])
-        line_coords = [
-            Decimal(start_point.x()),
-            Decimal(start_point.y()),
-            Decimal(end_point.x()),
-            Decimal(end_point.y()),
-        ]
-
-        # Call the functions capable of determining the parameter
-        # values needed to find out intersection point(s)
-        parameters = self._calculate_intersection_parameters(line_coords, centroid)
 
         # Check that the selected line feature and indirectly
         # defined circle intersect
