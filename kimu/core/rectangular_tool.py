@@ -3,8 +3,10 @@ from decimal import Decimal
 from typing import List
 
 from PyQt5.QtWidgets import QMessageBox
+from qgis import processing
 from qgis.core import (
     QgsFeature,
+    QgsFeatureRequest,
     QgsField,
     QgsGeometry,
     QgsPalLayerSettings,
@@ -39,308 +41,423 @@ class RectangularMapping(SelectTool):
 
     def active_changed(self, layer: QgsVectorLayer) -> None:
         """Triggered when active layer changes."""
-        if (
-            isinstance(layer, QgsVectorLayer)
-            and layer.isSpatial()
-            and layer.geometryType() == QgsWkbTypes.LineGeometry
-        ):
-            self.layer = layer
-            self.setLayer(self.layer)
+        self.layer = layer
+        self.setLayer(self.layer)
+
+    def _run_initial_checks(self) -> bool:
+        """Checks that the selections made are applicable."""
+        selected_layer = iface.activeLayer()
+
+        if isinstance(selected_layer, QgsVectorLayer) and selected_layer.isSpatial():
+            pass
+        else:
+            LOGGER.warning(
+                tr("Please select a valid vector layer"),
+                extra={"details": ""},
+            )
+            return False
+
+        if selected_layer.geometryType() == QgsWkbTypes.LineGeometry:
+
+            if len(selected_layer.selectedFeatures()) != 1:
+                LOGGER.warning(
+                    tr("Please select one line feature"),
+                    extra={"details": ""},
+                )
+                return False
+
+            if QgsWkbTypes.isSingleType(
+                list(selected_layer.getFeatures())[0].geometry().wkbType()
+            ):
+                pass
+            else:
+                LOGGER.warning(
+                    tr(
+                        "Please select a line layer with "
+                        "LineString geometries (instead "
+                        "of MultiLineString geometries)"
+                    ),
+                    extra={"details": ""},
+                )
+                return False
+
+            temp_layer = selected_layer.materialize(
+                QgsFeatureRequest().setFilterFids(selected_layer.selectedFeatureIds())
+            )
+            params1 = {"INPUT": temp_layer, "OUTPUT": "memory:"}
+            vertices = processing.run("native:extractvertices", params1)
+            vertices_layer = vertices["OUTPUT"]
+
+            if vertices_layer.featureCount() > 2:
+                LOGGER.warning(
+                    tr("Please use Explode line(s) tool first!"), extra={"details": ""}
+                )
+                return False
+
+        elif selected_layer.geometryType() == QgsWkbTypes.PointGeometry:
+
+            if len(selected_layer.selectedFeatures()) != 2:
+                LOGGER.warning(
+                    tr(
+                        "Please select two points in order to explicitly "
+                        "define a line feature"
+                    ),
+                    extra={"details": ""},
+                )
+                return False
+
+            if QgsWkbTypes.isSingleType(
+                list(selected_layer.getFeatures())[0].geometry().wkbType()
+            ):
+                pass
+            else:
+                LOGGER.warning(
+                    tr(
+                        "Please select a point layer with "
+                        "Point geometries (instead "
+                        "of MultiPoint geometries)"
+                    ),
+                    extra={"details": ""},
+                )
+                return False
+        else:
+            LOGGER.warning(
+                tr("Please select a point or line layer"),
+                extra={"details": ""},
+            )
+            return False
+
+        return True
 
     def canvasPressEvent(self, event: QgsMapToolEmitPoint) -> None:  # noqa: N802
         """Canvas click event."""
-        selected_line_coords = self._get_selected_line_coords(event)
-        if not selected_line_coords:
-            return
+        if self._run_initial_checks() is True:
 
-        # Determine parameter values for solving the quadratic equation in hand
-        parameters = self._calculate_parameters(selected_line_coords)
+            # Snap the click to the closest point feature available and get
+            # the coordinates of the property boundary line's end point we
+            # wish to measure the distance from
+            start_point = ClickTool(self.iface).activate(event)
 
-        # a_measure is given in crs units (meters for EPSG: 3067)
-        if Decimal(self.ui.get_a_measure()) != Decimal("0.000"):
-            # Let's locate alternative solutions for point A
-            try:
-                points_a = self._locate_point_a(selected_line_coords, parameters)
-            except IndexError:
+            selected_line_coords = self._get_line_coords(start_point)
+            if not selected_line_coords:
                 return
-        else:
-            points_a = [selected_line_coords[0], selected_line_coords[1]]
 
-        if points_a == []:
-            LOGGER.warning(
-                tr("Search of the point A was failed!"),
-                extra={"details": ""},
-            )
-            return
+            # Determine parameter values for solving the quadratic equation in hand
+            parameters = self._calculate_parameters(selected_line_coords)
 
-        # Let's show user the solution points and let the user to
-        # decide which is the desired one
-        option_points_layer_a = self._create_optional_points_layer(1)
-        QgsProject.instance().addMapLayer(option_points_layer_a)
-
-        option_points_layer_a.startEditing()
-        self._add_option_points_to_layer_a(points_a, option_points_layer_a)
-
-        # a_measure is given in crs units (meters for EPSG: 3067)
-        if Decimal(self.ui.get_a_measure()) > Decimal("0.000"):
-            message_box_a = QMessageBox()
-            message_box_a.setText(tr("Do you want to choose option 1 for point A?"))
-            message_box_a.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-            ret_a = message_box_a.exec()
-            if ret_a == QMessageBox.Yes:
-                point_a = [points_a[0], points_a[1]]
+            # a_measure is given in crs units (meters for EPSG: 3067)
+            if Decimal(self.ui.get_a_measure()) != Decimal("0.000"):
+                # Let's locate alternative solutions for point A
+                try:
+                    points_a = self._locate_point_a(selected_line_coords, parameters)
+                except IndexError:
+                    return
             else:
-                point_a = [points_a[2], points_a[3]]
-        else:
-            point_a = [points_a[0], points_a[1]]
+                points_a = [selected_line_coords[0], selected_line_coords[1]]
 
-        option_points_layer_a.commitChanges()
-        iface.vectorLayerTools().stopEditing(option_points_layer_a)
-        # Let's remove layer scratch layer related to point A alternatives
-        # since we have no use for this layer any more
-        QgsProject.instance().removeMapLayer(option_points_layer_a)
-
-        # Let's create a scratch layer for storing options for
-        # every mapped corner point
-        option_points_layer = self._create_optional_points_layer(0)
-        QgsProject.instance().addMapLayer(option_points_layer)
-
-        # b_measure is given in crs units (meters for EPSG: 3067)
-        if Decimal(self.ui.get_b_measure()) != Decimal("0.000"):
-            # Let's locate alternative solutions for point B
-            try:
-                points_b = self._locate_point_b(selected_line_coords, point_a)
-            except IndexError:
+            if points_a == []:
+                LOGGER.warning(
+                    tr("Search of the point A was failed!"),
+                    extra={"details": ""},
+                )
                 return
-        else:
-            points_b = point_a.copy()
 
-        if points_b == []:
-            LOGGER.warning(
-                tr("Search of the point B was failed!"),
-                extra={"details": ""},
+            # Let's show user the solution points and let the user
+            # to decide which is the desired one
+            option_points_layer_a = self._create_optional_points_layer(1)
+            QgsProject.instance().addMapLayer(option_points_layer_a)
+
+            option_points_layer_a.startEditing()
+            self._add_option_points_to_layer_a(points_a, option_points_layer_a)
+
+            # a_measure is given in crs units (meters for EPSG: 3067)
+            if Decimal(self.ui.get_a_measure()) > Decimal("0.000"):
+                message_box_a = QMessageBox()
+                message_box_a.setText(tr("Do you want to choose option 1 for point A?"))
+                message_box_a.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                ret_a = message_box_a.exec()
+                if ret_a == QMessageBox.Yes:
+                    point_a = [points_a[0], points_a[1]]
+                else:
+                    point_a = [points_a[2], points_a[3]]
+            else:
+                point_a = [points_a[0], points_a[1]]
+
+            option_points_layer_a.commitChanges()
+            iface.vectorLayerTools().stopEditing(option_points_layer_a)
+            # Let's remove layer scratch layer related to point A alternatives
+            # since we have no use for this layer any more
+            QgsProject.instance().removeMapLayer(option_points_layer_a)
+
+            # Let's create a scratch layer for storing options for
+            # every mapped corner point
+            option_points_layer = self._create_optional_points_layer(0)
+            QgsProject.instance().addMapLayer(option_points_layer)
+
+            # b_measure is given in crs units (meters for EPSG: 3067)
+            if Decimal(self.ui.get_b_measure()) != Decimal("0.000"):
+                # Let's locate alternative solutions for point B
+                try:
+                    points_b = self._locate_point_b(selected_line_coords, point_a)
+                except IndexError:
+                    return
+            else:
+                points_b = point_a.copy()
+
+            if points_b == []:
+                LOGGER.warning(
+                    tr("Search of the point B was failed!"),
+                    extra={"details": ""},
+                )
+                return
+
+            option_points_layer.startEditing()
+            option_point_ids = self._add_option_points_to_layer(
+                points_b, option_points_layer
             )
-            return
 
-        option_points_layer.startEditing()
-        option_point_ids = self._add_option_points_to_layer(
-            points_b, option_points_layer
-        )
-
-        # b_measure is given in crs units (meters for EPSG: 3067)
-        if Decimal(self.ui.get_b_measure()) > Decimal("0.000"):
-            # Let's ask the user which is the desired solution point
-            message_box = self._generate_option_point_messagebox(1)
-            ret = message_box.exec()
-            if ret == QMessageBox.Yes:
+            # b_measure is given in crs units (meters for EPSG: 3067)
+            if Decimal(self.ui.get_b_measure()) > Decimal("0.000"):
+                # Let's ask the user which is the desired solution point
+                message_box = self._generate_option_point_messagebox(1)
+                ret = message_box.exec()
+                if ret == QMessageBox.Yes:
+                    # Let's add the point user chose to the list of
+                    # selected corner points
+                    selected_corners = [[points_b[0], points_b[1]]]
+                    # Let's add the id of not chosen point to the
+                    # list of features we will delete later
+                    option_points_to_delete = [option_point_ids[1]]
+                else:
+                    selected_corners = [[points_b[2], points_b[3]]]
+                    option_points_to_delete = [option_point_ids[0]]
+            else:
                 # Let's add the point user chose to the list of
                 # selected corner points
                 selected_corners = [[points_b[0], points_b[1]]]
-                # Let's add the id of not chosen point to the
-                # list of features we will delete later
-                option_points_to_delete = [option_point_ids[1]]
-            else:
-                selected_corners = [[points_b[2], points_b[3]]]
-                option_points_to_delete = [option_point_ids[0]]
-        else:
-            # Let's add the point user chose to the list of
-            # selected corner points
-            selected_corners = [[points_b[0], points_b[1]]]
-            option_points_to_delete = []
+                option_points_to_delete = []
 
-        point_b = selected_corners[0]
+            point_b = selected_corners[0]
 
-        if self.ui.get_c_measures() != "":
-            # c_measures are given in crs units (meters for EPSG: 3067)
-            c_measures = [
-                Decimal(measure.strip())
-                for measure in self.ui.get_c_measures().split(",")
-            ]
+            if self.ui.get_c_measures() != "":
+                # c_measures are given in crs units (meters for EPSG: 3067)
+                c_measures = [
+                    Decimal(measure.strip())
+                    for measure in self.ui.get_c_measures().split(",")
+                ]
 
-            for i, c_measure in enumerate(c_measures):
-                if i == 0:
-                    # Map the second corner point which will be located in the extension
-                    # of the line feature connecting point A and point B
-                    # Note that we assume that point B is the closest corner point
-                    # a building has to the selected boundary line. In practice
-                    # this means that we do not have to ask the user which point
-                    # he prefers.
-                    if point_a == point_b:
-                        point_a = [selected_line_coords[2], selected_line_coords[3]]
-                    point_c = self._locate_point_c(c_measure, point_a, point_b)
+                for i, c_measure in enumerate(c_measures):
+                    if i == 0:
+                        # Map the second corner point which will be located in the extension
+                        # of the line feature connecting point A and point B
+                        # Note that we assume that point B is the closest corner point
+                        # a building has to the selected boundary line. In practice
+                        # this means that we do not have to ask the user which point
+                        # he prefers.
+                        if point_a == point_b:
+                            point_a = [selected_line_coords[2], selected_line_coords[3]]
+                        point_c = self._locate_point_c(c_measure, point_a, point_b)
 
-                    if point_c == []:
+                        if point_c == []:
+                            LOGGER.warning(
+                                tr("Search of the second corner point was failed!"),
+                                extra={"details": ""},
+                            )
+                            return
+
+                        option_point_ids += self._add_option_points_to_layer(
+                            point_c, option_points_layer, selected_corners
+                        )
+                        selected_corners.append([point_c[0], point_c[1]])
+                        continue
+
+                    # Map the rest of the rectangular corner points (they will be located
+                    # perpendicularly with respect to the line feature connecting two last
+                    # elements of the selected corners list)
+                    new_corner_points = self._locate_point_d(
+                        c_measure, selected_corners
+                    )
+
+                    if new_corner_points == []:
                         LOGGER.warning(
-                            tr("Search of the second corner point was failed!"),
+                            tr(
+                                "Search of the corner point related to an element in"
+                                " the given building wall width list was failed!"
+                            ),
                             extra={"details": ""},
                         )
                         return
 
                     option_point_ids += self._add_option_points_to_layer(
-                        point_c, option_points_layer, selected_corners
+                        new_corner_points, option_points_layer, selected_corners
                     )
-                    selected_corners.append([point_c[0], point_c[1]])
-                    continue
 
-                # Map the rest of the rectangular corner points (they will be located
-                # perpendicularly with respect to the line feature connecting two last
-                # elements of the selected corners list)
-                new_corner_points = self._locate_point_d(c_measure, selected_corners)
-
-                if new_corner_points == []:
-                    LOGGER.warning(
-                        tr(
-                            "Search of the corner point related to an element in"
-                            " the given building wall width list was failed!"
-                        ),
-                        extra={"details": ""},
+                    message_box = self._generate_option_point_messagebox(
+                        len(selected_corners) + 1
                     )
-                    return
-
-                option_point_ids += self._add_option_points_to_layer(
-                    new_corner_points, option_points_layer, selected_corners
-                )
-
-                message_box = self._generate_option_point_messagebox(
-                    len(selected_corners) + 1
-                )
-                ret = message_box.exec()
-                # Consider the signal and check if point already exists in selected
-                # corners list in order to avoid duplicates
-                if (
-                    ret == QMessageBox.No
-                    and [new_corner_points[2], new_corner_points[3]]
-                    not in selected_corners
-                ):
-                    if i == 1:
-                        selected_corners.append(
-                            [new_corner_points[2], new_corner_points[3]]
-                        )
-                        if len(points_b) > 2:
-                            option_points_to_delete.append(option_point_ids[3])
+                    ret = message_box.exec()
+                    # Consider the signal and check if point already exists in selected
+                    # corners list in order to avoid duplicates
+                    if (
+                        ret == QMessageBox.No
+                        and [new_corner_points[2], new_corner_points[3]]
+                        not in selected_corners
+                    ):
+                        if i == 1:
+                            selected_corners.append(
+                                [new_corner_points[2], new_corner_points[3]]
+                            )
+                            if len(points_b) > 2:
+                                option_points_to_delete.append(option_point_ids[3])
+                            else:
+                                option_points_to_delete.append(option_point_ids[2])
                         else:
-                            option_points_to_delete.append(option_point_ids[2])
+                            selected_corners.append(
+                                [new_corner_points[2], new_corner_points[3]]
+                            )
+                            if len(points_b) > 2:
+                                option_points_to_delete.append(
+                                    option_point_ids[2 + (i * 2 - 1)]
+                                )
+                            else:
+                                option_points_to_delete.append(
+                                    option_point_ids[1 + (i * 2 - 1)]
+                                )
+                    elif (
+                        ret == QMessageBox.Yes
+                        and [new_corner_points[0], new_corner_points[1]]
+                        not in selected_corners
+                    ):
+                        if i == 1:
+                            selected_corners.append(
+                                [new_corner_points[0], new_corner_points[1]]
+                            )
+                            if len(points_b) > 2:
+                                option_points_to_delete.append(option_point_ids[4])
+                            else:
+                                option_points_to_delete.append(option_point_ids[3])
+                        else:
+                            selected_corners.append(
+                                [new_corner_points[0], new_corner_points[1]]
+                            )
+                            if len(points_b) > 2:
+                                option_points_to_delete.append(
+                                    option_point_ids[2 + (i * 2)]
+                                )
+                            else:
+                                option_points_to_delete.append(
+                                    option_point_ids[1 + (i * 2)]
+                                )
                     else:
-                        selected_corners.append(
-                            [new_corner_points[2], new_corner_points[3]]
-                        )
-                        if len(points_b) > 2:
-                            option_points_to_delete.append(
-                                option_point_ids[2 + (i * 2 - 1)]
-                            )
-                        else:
-                            option_points_to_delete.append(
-                                option_point_ids[1 + (i * 2 - 1)]
-                            )
-                elif (
-                    ret == QMessageBox.Yes
-                    and [new_corner_points[0], new_corner_points[1]]
-                    not in selected_corners
-                ):
-                    if i == 1:
-                        selected_corners.append(
-                            [new_corner_points[0], new_corner_points[1]]
-                        )
-                        if len(points_b) > 2:
-                            option_points_to_delete.append(option_point_ids[4])
-                        else:
-                            option_points_to_delete.append(option_point_ids[3])
-                    else:
-                        selected_corners.append(
-                            [new_corner_points[0], new_corner_points[1]]
-                        )
-                        if len(points_b) > 2:
-                            option_points_to_delete.append(
-                                option_point_ids[2 + (i * 2)]
-                            )
-                        else:
-                            option_points_to_delete.append(
-                                option_point_ids[1 + (i * 2)]
-                            )
-                else:
-                    pass
+                        pass
 
-        # Delete the features user did not select
-        if option_points_to_delete != []:
-            option_points_layer.deleteFeatures(option_points_to_delete)
-        option_points_layer.commitChanges()
-        iface.vectorLayerTools().stopEditing(option_points_layer)
+            # Delete the features user did not select
+            if option_points_to_delete != []:
+                option_points_layer.deleteFeatures(option_points_to_delete)
+            option_points_layer.commitChanges()
+            iface.vectorLayerTools().stopEditing(option_points_layer)
 
-        # Save the mapped point features to the file user has chosen
-        if self.ui.get_output_file_path() != "":
-            self._write_output_to_file(option_points_layer)
-            QgsProject.instance().removeMapLayer(option_points_layer)
+            # Save the mapped point features to the file user has chosen
+            if self.ui.get_output_file_path() != "":
+                self._write_output_to_file(option_points_layer)
+                QgsProject.instance().removeMapLayer(option_points_layer)
 
-    def _get_selected_line_coords(self, event: QgsMapToolEmitPoint) -> List[Decimal]:
+    def _get_line_coords(self, start_point: QgsMapToolEmitPoint) -> List[Decimal]:
         """Store the coordinates of the selected line feature"""
-        if self.iface.activeLayer() != self.layer:
-            LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
-            return []
-
-        if not QgsWkbTypes.isSingleType(
-            list(self.iface.activeLayer().getFeatures())[0].geometry().wkbType()
-        ):
-            LOGGER.warning(
-                tr(
-                    "Please select a line layer with "
-                    "LineString geometries (instead "
-                    "of MultiLineString geometries)"
-                ),
-                extra={"details": ""},
+        if self.iface.activeLayer().geometryType() == QgsWkbTypes.LineGeometry:
+            selected_line_geometry = (
+                self.iface.activeLayer().selectedFeatures()[0].geometry().asPolyline()
             )
-            return []
 
-        if len(self.iface.activeLayer().selectedFeatures()) != 1:
-            LOGGER.warning(
-                tr("Please select exactly one line feature"), extra={"details": ""}
-            )
-            return []
-
-        # Snap the click to the closest point feature available and get
-        # the coordinates of the property boundary line's end point we
-        # wish to measure the distance from
-        start_point = ClickTool(self.iface).activate(event)
-        selected_line_geometry = (
-            self.iface.activeLayer().selectedFeatures()[0].geometry().asPolyline()
-        )
-
-        # Checks that the coordinate values get stored in the correct order
-        if (
-            QgsGeometry.fromPointXY(QgsPointXY(selected_line_geometry[0])).equals(
-                QgsGeometry.fromPointXY(
-                    QgsPointXY(float(start_point[0]), float(start_point[1]))
+            # Checks that the coordinate values get stored in the correct order
+            if (
+                QgsGeometry.fromPointXY(QgsPointXY(selected_line_geometry[0])).equals(
+                    QgsGeometry.fromPointXY(
+                        QgsPointXY(float(start_point[0]), float(start_point[1]))
+                    )
                 )
-            )
-            is True
-        ):
-            point1 = QgsPointXY(selected_line_geometry[0])
-            point2 = QgsPointXY(selected_line_geometry[-1])
-        elif (
-            QgsGeometry.fromPointXY(QgsPointXY(selected_line_geometry[-1])).equals(
-                QgsGeometry.fromPointXY(
-                    QgsPointXY(float(start_point[0]), float(start_point[1]))
+                is True
+            ):
+                point1 = QgsPointXY(selected_line_geometry[0])
+                point2 = QgsPointXY(selected_line_geometry[-1])
+            elif (
+                QgsGeometry.fromPointXY(QgsPointXY(selected_line_geometry[-1])).equals(
+                    QgsGeometry.fromPointXY(
+                        QgsPointXY(float(start_point[0]), float(start_point[1]))
+                    )
                 )
-            )
-            is True
-        ):
-            point1 = QgsPointXY(selected_line_geometry[-1])
-            point2 = QgsPointXY(selected_line_geometry[0])
+                is True
+            ):
+                point1 = QgsPointXY(selected_line_geometry[-1])
+                point2 = QgsPointXY(selected_line_geometry[0])
+            else:
+                LOGGER.warning(
+                    tr(
+                        "Please select start or end point of the "
+                        "selected property boundary line."
+                    ),
+                    extra={"details": ""},
+                )
+                return []
+
+            line_coords = [
+                Decimal(point1.x()),
+                Decimal(point1.y()),
+                Decimal(point2.x()),
+                Decimal(point2.y()),
+            ]
         else:
-            LOGGER.warning(
-                tr(
-                    "Please select start or end point of the "
-                    "selected property boundary line."
-                ),
-                extra={"details": ""},
-            )
-            return []
+            # Checks which of the selected points the user clicks on
+            if (
+                self.iface.activeLayer()
+                .selectedFeatures()[0]
+                .geometry()
+                .equals(
+                    QgsGeometry.fromPointXY(
+                        QgsPointXY(float(start_point[0]), float(start_point[1]))
+                    )
+                )
+                is True
+            ):
+                point1 = (
+                    self.iface.activeLayer().selectedFeatures()[0].geometry().asPoint()
+                )
+                point2 = (
+                    self.iface.activeLayer().selectedFeatures()[1].geometry().asPoint()
+                )
+            elif (
+                self.iface.activeLayer()
+                .selectedFeatures()[1]
+                .geometry()
+                .equals(
+                    QgsGeometry.fromPointXY(
+                        QgsPointXY(float(start_point[0]), float(start_point[1]))
+                    )
+                )
+                is True
+            ):
+                point1 = (
+                    self.iface.activeLayer().selectedFeatures()[1].geometry().asPoint()
+                )
+                point2 = (
+                    self.iface.activeLayer().selectedFeatures()[0].geometry().asPoint()
+                )
+            else:
+                LOGGER.warning(
+                    tr(
+                        "Please select start or end point of the "
+                        "selected property boundary line."
+                    ),
+                    extra={"details": ""},
+                )
+                return []
 
-        line_coords = [
-            Decimal(point1.x()),
-            Decimal(point1.y()),
-            Decimal(point2.x()),
-            Decimal(point2.y()),
-        ]
+            line_coords = [
+                Decimal(point1.x()),
+                Decimal(point1.y()),
+                Decimal(point2.x()),
+                Decimal(point2.y()),
+            ]
 
         return line_coords
 
