@@ -20,6 +20,11 @@ To get started with the development, follow these steps:
    ```shell
     python build.py venv
     ```
+   and activate it with
+   ```shell
+   source ./.venv/bin/activate
+   ```
+   > Make sure that you have python3-pip and pre-commit installed at this phase!
    In Windows it would be best to use python-qgis.bat or python-qgis-ltr.bat:
    ```shell
     C:\OSGeo4W64\bin\python-qgis.bat build.py venv
@@ -71,6 +76,7 @@ python build.py deploy
 
 After deploying and restarting QGIS you should see the plugin in the QGIS installed plugins where you have to activate
 it.
+* Consider installing Plugin Reloader plugin from QGIS's official plugin repository!
 
 ## Testing
 
