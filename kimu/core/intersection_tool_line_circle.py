@@ -61,7 +61,7 @@ class IntersectionLineCircle(SelectTool):
 
             if len(selected_layer.selectedFeatures()) != 1:
                 LOGGER.warning(
-                    tr("Please select only one line feature"),
+                    tr("Please select one line feature"),
                     extra={"details": ""},
                 )
                 return False
