@@ -37,12 +37,14 @@ class DisplaceLine(SelectTool):
 
     def manual_activate(self) -> None:
         """Manually activate tool."""
+
         self.iface.mapCanvas().setMapTool(self)
         self.action().setChecked(True)
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.ui)
 
     def active_changed(self, layer: QgsVectorLayer) -> None:
         """Triggered when active layer changes."""
+
         if (
             isinstance(layer, QgsVectorLayer)
             and layer.isSpatial()
@@ -52,10 +54,21 @@ class DisplaceLine(SelectTool):
             self.setLayer(self.layer)
 
     def canvasPressEvent(self, event: QgsMapMouseEvent) -> None:  # noqa: N802
-        """Select the line feature to displace"""
-        selected_layer = self.iface.activeLayer()
-        if selected_layer != self.layer:
-            LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
+        """Click on the line feature to displace."""
+
+        selected_layer = iface.activeLayer()
+
+        if (
+            isinstance(selected_layer, QgsVectorLayer)
+            and selected_layer.isSpatial()
+            and (selected_layer.geometryType() == QgsWkbTypes.LineGeometry)
+        ):
+            pass
+        else:
+            LOGGER.warning(
+                tr("Please select a line layer"),
+                extra={"details": ""},
+            )
             return
 
         feat = self._identify_and_extract_single_geometry(event)
@@ -74,6 +87,7 @@ class DisplaceLine(SelectTool):
             return
 
         line_feat = feat.asPolyline()
+
         start_point = QgsPointXY(line_feat[0])
         end_point = QgsPointXY(line_feat[-1])
 
@@ -88,8 +102,28 @@ class DisplaceLine(SelectTool):
         point1 = [Decimal(start_point.x()), Decimal(start_point.y())]
         point2 = [Decimal(end_point.x()), Decimal(end_point.y())]
 
-        new_coord1 = self._calculate_new_coordinates(selected_line_coords, point1)
-        new_coord2 = self._calculate_new_coordinates(selected_line_coords, point2)
+        d = Decimal(self.ui.get_displacement())
+
+        new_coord1 = self._calculate_new_coordinates(selected_line_coords, point1, d)
+        new_coord2 = self._calculate_new_coordinates(selected_line_coords, point2, d)
+
+        # Check that if d was positive, the y coordinate value of the
+        # displaced line's start point is greater than y coordinate value
+        # of the original line's start point
+        if (new_coord1[1] > start_point.y() and d > 0) or (
+            new_coord1[1] == start_point.y()
+            and d > 0
+            and new_coord1[0] > start_point.x()
+        ):
+            pass
+        else:
+            d = Decimal("-1.0") * Decimal(self.ui.get_displacement())
+            new_coord1 = self._calculate_new_coordinates(
+                selected_line_coords, point1, d
+            )
+            new_coord2 = self._calculate_new_coordinates(
+                selected_line_coords, point2, d
+            )
 
         # Check that the solution points lie in the
         # map canvas extent
@@ -111,25 +145,7 @@ class DisplaceLine(SelectTool):
             )
             return
 
-        temp_layer = QgsVectorLayer("Point", "temp", "memory")
-        crs = selected_layer.crs()
-        temp_layer.setCrs(crs)
-        temp_layer_dataprovider = temp_layer.dataProvider()
-        temp_layer_dataprovider.addAttributes([QgsField("tunniste", QVariant.Int)])
-        temp_layer.updateFields()
-        point_feature = QgsFeature()
-        point_feature.setGeometry(
-            QgsGeometry.fromPointXY(QgsPointXY(new_coord1[0], new_coord1[1]))
-        )
-        point_feature.setAttributes([1])
-        point_feature2 = QgsFeature()
-        point_feature2.setGeometry(
-            QgsGeometry.fromPointXY(QgsPointXY(new_coord2[0], new_coord2[1]))
-        )
-        point_feature2.setAttributes([2])
-        temp_layer_dataprovider.addFeature(point_feature)
-        temp_layer_dataprovider.addFeature(point_feature2)
-        temp_layer.updateExtents()
+        temp_layer = self._create_temp_layer([new_coord1, new_coord2])
 
         line_params = {
             "INPUT": temp_layer,
@@ -138,6 +154,7 @@ class DisplaceLine(SelectTool):
         }
 
         line_result = processing.run("qgis:pointstopath", line_params)
+
         result_layer = line_result["OUTPUT"]
         result_layer.setName(tr("Displaced line"))
         result_layer.renderer().symbol().setWidth(0.7)
@@ -173,27 +190,27 @@ class DisplaceLine(SelectTool):
         self, event: QgsMapMouseEvent
     ) -> QgsGeometry:
         """Identifies clicked feature and extracts its geometry.
-        Returns empty geometry if nr. of identified features != 1."""
+        Returns empty geometry if number of identified features != 1."""
+
         found_features: List[QgsMapToolIdentify.IdentifyResult] = self.identify(
             event.x(), event.y(), [self.layer], QgsMapToolIdentify.ActiveLayer
         )
         if len(found_features) != 1:
             LOGGER.info(
-                tr("Please select one line"), extra={"details": "", "duration": 1}
+                tr("Please click on one line feature"),
+                extra={"details": "", "duration": 1},
             )
             return QgsGeometry()
-        self.layer.selectByIds(
-            [f.mFeature.id() for f in found_features], QgsVectorLayer.SetSelection
-        )
+
         geometry: QgsGeometry = found_features[0].mFeature.geometry()
+
         return geometry
 
+    @staticmethod
     def _calculate_new_coordinates(
-        self, line_coords: List[Decimal], old_point: List[Decimal]
+        line_coords: List[Decimal], old_point: List[Decimal], d: Decimal
     ) -> List[float]:
-        """Calculate new coordinates""" ""
-
-        d = Decimal(self.ui.get_displacement())
+        """Calculate new coordinate values for the vertex point of the line to be displaced."""
 
         a = (line_coords[3] - line_coords[1]) / (line_coords[2] - line_coords[0])
         b = Decimal("-1.0")
@@ -223,8 +240,34 @@ class DisplaceLine(SelectTool):
 
         return new_coords
 
+    def _create_temp_layer(self, new_points: List[List[float]]) -> QgsVectorLayer:
+        """Creates a QgsVectorLayer for storing optional points."""
+
+        temp_layer = QgsVectorLayer("Point", "temp", "memory")
+        crs = iface.activeLayer().crs()
+        temp_layer.setCrs(crs)
+        temp_layer_dataprovider = temp_layer.dataProvider()
+        temp_layer_dataprovider.addAttributes([QgsField("tunniste", QVariant.Int)])
+        temp_layer.updateFields()
+        point_feature = QgsFeature()
+        point_feature.setGeometry(
+            QgsGeometry.fromPointXY(QgsPointXY(new_points[0][0], new_points[0][1]))
+        )
+        point_feature.setAttributes([1])
+        point_feature2 = QgsFeature()
+        point_feature2.setGeometry(
+            QgsGeometry.fromPointXY(QgsPointXY(new_points[1][0], new_points[1][1]))
+        )
+        point_feature2.setAttributes([2])
+        temp_layer_dataprovider.addFeature(point_feature)
+        temp_layer_dataprovider.addFeature(point_feature2)
+        temp_layer.updateExtents()
+
+        return temp_layer
+
     @staticmethod
     def _generate_question_messagebox() -> QMessageBox:
+        """Creates and returns message box object."""
         message_box = QMessageBox()
         message_box.setText(
             tr(
@@ -233,4 +276,5 @@ class DisplaceLine(SelectTool):
             )
         )
         message_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+
         return message_box
