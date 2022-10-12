@@ -145,21 +145,7 @@ class DisplaceLine(SelectTool):
             )
             return
 
-        temp_layer = self._create_temp_layer([new_coord1, new_coord2])
-
-        line_params = {
-            "INPUT": temp_layer,
-            "ORDER_FIELD": "tunniste",
-            "OUTPUT": "memory:",
-        }
-
-        line_result = processing.run("qgis:pointstopath", line_params)
-
-        result_layer = line_result["OUTPUT"]
-        result_layer.setName(tr("Displaced line"))
-        result_layer.renderer().symbol().setWidth(0.7)
-        result_layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
-        QgsProject.instance().addMapLayer(result_layer)
+        result_layer = self._create_temp_layer([new_coord1, new_coord2])
 
         message_box = self._generate_question_messagebox()
         ret = message_box.exec()
@@ -241,7 +227,7 @@ class DisplaceLine(SelectTool):
         return new_coords
 
     def _create_temp_layer(self, new_points: List[List[float]]) -> QgsVectorLayer:
-        """Creates a QgsVectorLayer for storing optional points."""
+        """Creates a QgsVectorLayer for displaced line feature."""
 
         temp_layer = QgsVectorLayer("Point", "temp", "memory")
         crs = iface.activeLayer().crs()
@@ -263,7 +249,21 @@ class DisplaceLine(SelectTool):
         temp_layer_dataprovider.addFeature(point_feature2)
         temp_layer.updateExtents()
 
-        return temp_layer
+        line_params = {
+            "INPUT": temp_layer,
+            "ORDER_FIELD": "tunniste",
+            "OUTPUT": "memory:",
+        }
+
+        line_result = processing.run("qgis:pointstopath", line_params)
+
+        result_layer = line_result["OUTPUT"]
+        result_layer.setName(tr("Displaced line"))
+        result_layer.renderer().symbol().setWidth(0.7)
+        result_layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
+        QgsProject.instance().addMapLayer(result_layer)
+
+        return result_layer
 
     @staticmethod
     def _generate_question_messagebox() -> QMessageBox:
