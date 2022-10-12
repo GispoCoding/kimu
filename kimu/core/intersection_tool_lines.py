@@ -1,11 +1,10 @@
 import decimal
 from decimal import Decimal
-from typing import List
+from typing import List, Tuple
 
-from qgis import processing
 from qgis.core import (
+    QgsCoordinateReferenceSystem,
     QgsFeature,
-    QgsFeatureRequest,
     QgsField,
     QgsGeometry,
     QgsPointXY,
@@ -37,60 +36,50 @@ class IntersectionLines:
 
     def _run_initial_checks(self) -> bool:
         """Checks that the selections made are applicable."""
-        selected_layer = iface.activeLayer()
+        all_layers = QgsProject.instance().mapLayers().values()
 
-        if (
-            isinstance(selected_layer, QgsVectorLayer)
-            and selected_layer.isSpatial()
-            and selected_layer.geometryType() == QgsWkbTypes.LineGeometry
-        ):
-            status = True
+        points_found = 0
+        crs_list = []
+        # Check for selected features from all layers
+        for layer in all_layers:
+            for feature in layer.selectedFeatures():
+
+                if layer.geometryType() == QgsWkbTypes.LineGeometry:
+                    if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
+                        points_found += 2
+                        crs_list.append(layer.crs().srsid())
+                    else:
+                        self._log_warning(
+                            "Please select a line layer with LineString \
+                            geometries (instead of MultiLineString geometries)"
+                        )
+                        return False
+
+                # elif layer.geometryType() == QgsWkbTypes.PointGeometry:
+                #     if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
+                #         points_found += len(selected_layer.selectedFeatures())
+                #     else:
+                #         self._log_warning("Please select a point layer with Point \
+                #             geometries (instead of MultiPoint geometries)")
+                #         return False
+
+                else:
+                    self._log_warning("Please select only vector line layers")
+                    return False
+
+        if len(set(crs_list)) != 1:
+            self._log_warning("Please select only layers with same CRS")
+            return False
+        elif points_found != 4:
+            self._log_warning(
+                "Please select only either: 2 lines, 1 line and 2 points, or 4 points"
+            )
+            return False
         else:
-            LOGGER.warning(
-                tr("Please select a line layer"),
-                extra={"details": ""},
-            )
-            status = False
-
-        if len(selected_layer.selectedFeatures()) != 2 and status is True:
-            LOGGER.warning(
-                tr("Please select two line features from same layer"),
-                extra={"details": ""},
-            )
-            status = False
-
-        if (
-            QgsWkbTypes.isSingleType(
-                list(selected_layer.getFeatures())[0].geometry().wkbType()
-            )
-            or status is False
-        ):
-            pass
-        else:
-            LOGGER.warning(
-                tr(
-                    "Please select a line layer with "
-                    "LineString geometries (instead "
-                    "of MultiLineString geometries)"
-                ),
-                extra={"details": ""},
-            )
-            status = False
-
-        temp_layer = selected_layer.materialize(
-            QgsFeatureRequest().setFilterFids(selected_layer.selectedFeatureIds())
-        )
-        params1 = {"INPUT": temp_layer, "OUTPUT": "memory:"}
-        vertices = processing.run("native:extractvertices", params1)
-        vertices_layer = vertices["OUTPUT"]
-
-        if vertices_layer.featureCount() > 4 and status is True:
-            LOGGER.warning(
-                tr("Please use Explode line(s) tool first!"), extra={"details": ""}
-            )
-            status = False
-
-        return status
+            # NOTE: We are now allowing lines with > 2 vertices. This might be unwanted.
+            # Now the interesecting line is imagined to travel straight from first to last
+            # vertex in these cases.
+            return True
 
     def _check_not_parallel(self, point_coords: List[Decimal]) -> None:
         """Checks that the selected line features are not parallel."""
@@ -101,10 +90,7 @@ class IntersectionLines:
             point_coords[6] - point_coords[4]
         )
         if slope1 == slope2:
-            LOGGER.warning(
-                tr("Lines are parallel; there is no intersection point!"),
-                extra={"details": ""},
-            )
+            self._log_warning("Lines are parallel; there is no intersection point!")
             return
 
     def _calculate_coords(self, point_coords: List[Decimal]) -> List[float]:
@@ -153,57 +139,53 @@ class IntersectionLines:
 
         # Check that the result point lies in the map canvas extent
         extent = iface.mapCanvas().extent()
-
         if (
             x < extent.xMinimum()
             or x > extent.xMaximum()
             or y < extent.yMinimum()
             or y > extent.yMaximum()
         ):
-            LOGGER.warning(
-                tr("Intersection point lies outside of the map canvas!"),
-                extra={"details": ""},
-            )
+            self._log_warning("Intersection point lies outside of the map canvas!")
             return  # type: ignore
 
         return [x, y]
 
+    def _extract_points_and_crs(self) -> Tuple[List, str]:
+        line_points = []
+        all_layers = QgsProject.instance().mapLayers().values()
+        crs_id = ""
+        for layer in all_layers:
+            for feat in layer.selectedFeatures():
+                crs_id = layer.crs().srsid()
+                line_feat = feat.geometry().asPolyline()
+                start_point = QgsPointXY(line_feat[0])
+                end_point = QgsPointXY(line_feat[-1])
+                line_points.extend(
+                    [
+                        decimal.Decimal(start_point.x()),
+                        decimal.Decimal(start_point.y()),
+                        decimal.Decimal(end_point.x()),
+                        decimal.Decimal(end_point.y()),
+                    ]
+                )
+        return line_points, crs_id
+
     def run(self) -> None:
         """Main method."""
-        self.dlg = IntersectLinesDialog(iface)
-        self.dlg.pushButton.clicked.connect(self.select_output_file)
-        self.dlg.show()
-
-        # Run the dialog event loop
-        result = self.dlg.exec_()
-
-        selected_layer = iface.activeLayer()
-
         if self._run_initial_checks() is True:
+            line_points, crs_id = self._extract_points_and_crs()
+            crs = QgsCoordinateReferenceSystem()
+            crs.createFromId(crs_id)
+            self._check_not_parallel(line_points)
+
+            self.dlg = IntersectLinesDialog(iface)
+            self.dlg.pushButton.clicked.connect(self.select_output_file)
+            self.dlg.show()
+            result = self.dlg.exec_()
             # See if user wants to save result into a file
             if result:
-                line_points = []
-
-                features = selected_layer.selectedFeatures()
-                for feat in features:
-                    line_feat = feat.geometry().asPolyline()
-                    start_point = QgsPointXY(line_feat[0])
-                    end_point = QgsPointXY(line_feat[-1])
-                    line_points.extend(
-                        [
-                            decimal.Decimal(start_point.x()),
-                            decimal.Decimal(start_point.y()),
-                            decimal.Decimal(end_point.x()),
-                            decimal.Decimal(end_point.y()),
-                        ]
-                    )
-
-                self._check_not_parallel(line_points)
-
                 coords = self._calculate_coords(line_points)
                 layer = QgsVectorLayer("Point", "temp", "memory")
-                selected_layer = iface.activeLayer()
-                crs = selected_layer.crs()
                 layer.setCrs(crs)
                 options_layer_dataprovider = layer.dataProvider()
                 options_layer_dataprovider.addAttributes(
@@ -239,31 +221,13 @@ class IntersectionLines:
                 )
 
                 if error:
-                    LOGGER.warning(
-                        tr(f"Error writing output to file, error code {error}"),
-                        extra={"details": tr(f"Details: {explanation}")},
+                    self._log_warning(
+                        f"Error writing output to file, error code {error}",
+                        tr(f"Details: {explanation}"),
                     )
                     return
             else:
-                line_points = []
-
-                features = selected_layer.selectedFeatures()
-                for feat in features:
-                    line_feat = feat.geometry().asPolyline()
-                    start_point = QgsPointXY(line_feat[0])
-                    end_point = QgsPointXY(line_feat[-1])
-                    line_points.extend(
-                        [
-                            decimal.Decimal(start_point.x()),
-                            decimal.Decimal(start_point.y()),
-                            decimal.Decimal(end_point.x()),
-                            decimal.Decimal(end_point.y()),
-                        ]
-                    )
-
-                self._check_not_parallel(line_points)
                 result_layer = QgsVectorLayer("Point", "temp", "memory")
-                crs = selected_layer.crs()
                 result_layer.setCrs(crs)
                 result_layer_dataprovider = result_layer.dataProvider()
                 result_layer_dataprovider.addAttributes(
@@ -288,3 +252,10 @@ class IntersectionLines:
                 result_layer.renderer().symbol().setSize(2)
                 result_layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
                 QgsProject.instance().addMapLayer(result_layer)
+
+    @staticmethod
+    def _log_warning(message: str, details: str = "") -> None:
+        LOGGER.warning(
+            tr(message),
+            extra={"details": details},
+        )
