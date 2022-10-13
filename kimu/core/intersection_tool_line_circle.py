@@ -299,7 +299,7 @@ class IntersectionLineCircle(SelectTool):
 
         result_layer1_dataprovider = result_layer1.dataProvider()
         result_layer1_dataprovider.addAttributes(
-            [QgsField("tunniste", QVariant.String),
+            [QgsField("id", QVariant.String),
              QgsField("xcoord", QVariant.Double),
              QgsField("ycoord", QVariant.Double),
              QgsField("centroid xcoord", QVariant.Double),
@@ -333,7 +333,7 @@ class IntersectionLineCircle(SelectTool):
         buffer_settings.setColor(QColor("black"))
         text_format.setBuffer(buffer_settings)
         layer_settings.setFormat(text_format)
-        layer_settings.fieldName = "tunniste"
+        layer_settings.fieldName = "id"
         layer_settings.placement = 0
         layer_settings.dist = 2.0
         layer_settings.enabled = True
