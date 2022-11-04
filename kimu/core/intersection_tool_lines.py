@@ -487,7 +487,7 @@ class IntersectionLines:
             result_layer.commitChanges()
             iface.vectorLayerTools().stopEditing(result_layer)
 
-            # Ask if user wants to save file
+            # Ask if user wants to save to file
             self.dlg = IntersectLinesDialog(iface)
             self.dlg.pushButton.clicked.connect(self.select_output_file)
             self.dlg.show()
