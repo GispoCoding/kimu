@@ -186,6 +186,18 @@ class IntersectionLines:
             return False
         return True
 
+    def _check_outside_canvas(self, coords: Tuple[float, float]) -> bool:
+        extent = iface.mapCanvas().extent()
+        if (
+            coords[0] < extent.xMinimum()
+            or coords[0] > extent.xMaximum()
+            or coords[1] < extent.yMinimum()
+            or coords[1] > extent.yMaximum()
+        ):
+            return True
+        else:
+            return False
+
     def _calculate_coords(
         self, line1_coords: LineCoordinates, line2_coords: LineCoordinates
     ) -> Tuple[float, float]:
@@ -232,16 +244,6 @@ class IntersectionLines:
             * (Decimal(x) - line1_coords.x1)
             + line1_coords.y1
         )
-
-        # Check if the intersection point lies outside of canvas extent
-        extent = iface.mapCanvas().extent()
-        if (
-            x < extent.xMinimum()
-            or x > extent.xMaximum()
-            or y < extent.yMinimum()
-            or y > extent.yMaximum()
-        ):
-            self._log_warning("Intersection point lies outside of the map canvas!")
 
         return x, y
 
@@ -321,6 +323,7 @@ class IntersectionLines:
         result_layer.setName(tr("Intersection point"))
         result_layer.renderer().symbol().setSize(2)
         result_layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
+        QgsProject.instance().addMapLayer(result_layer)
         return result_layer
 
     def _add_point_to_layer(
@@ -421,17 +424,48 @@ class IntersectionLines:
             # CASE multiple potential intersection points
             if isinstance(line_points[0], QgsPointXY):
                 all_intersection_coords = self._calculate_multiple_coords(line_points)
-                result_layer = self._create_result_layer(crs)
-                QgsProject.instance().addMapLayer(result_layer)
-
-                i = 1
-                point_features = []
-                for coords in all_intersection_coords:
-                    point = self._add_point_to_layer(result_layer, coords, f"Opt {i}")
-                    point_features.append(point)
-                    i += 1
-                self._set_and_format_labels(result_layer)
-                self._select_intersection_point(result_layer, point_features)
+                coords_in_extent = [
+                    coords
+                    for coords in all_intersection_coords
+                    if not self._check_outside_canvas(coords)
+                ]
+                if len(coords_in_extent) == 0:
+                    self._log_warning(
+                        "All potential intersection points lie outside of the map canvas!"
+                    )
+                    return
+                elif len(coords_in_extent) == 1:
+                    result_layer = self._create_result_layer(crs)
+                    self._add_point_to_layer(
+                        result_layer, coords_in_extent[0], "Intersection point"
+                    )
+                    excluded_points = len(all_intersection_coords) - len(
+                        coords_in_extent
+                    )
+                    self._log_warning(
+                        f"{excluded_points} \
+                        potential intersection points lie outside of the map canvas!"
+                    )
+                else:
+                    result_layer = self._create_result_layer(crs)
+                    i = 1
+                    point_features = []
+                    for coords in coords_in_extent:
+                        point = self._add_point_to_layer(
+                            result_layer, coords, f"Opt {i}"
+                        )
+                        point_features.append(point)
+                        i += 1
+                    excluded_points = len(all_intersection_coords) - len(
+                        coords_in_extent
+                    )
+                    if excluded_points > 0:
+                        self._log_warning(
+                            f"{excluded_points} \
+                            potential intersection points lie outside of the map canvas!"
+                        )
+                    self._set_and_format_labels(result_layer)
+                    self._select_intersection_point(result_layer, point_features)
 
             # CASE one intersection point
             else:
@@ -440,8 +474,12 @@ class IntersectionLines:
                 intersection_coords = self._calculate_coords(
                     line_points[0], line_points[1]
                 )
+                if self._check_outside_canvas(intersection_coords):
+                    self._log_warning(
+                        "Intersection point lies outside of the map canvas!"
+                    )
+                    return
                 result_layer = self._create_result_layer(crs)
-                QgsProject.instance().addMapLayer(result_layer)
                 self._add_point_to_layer(
                     result_layer, intersection_coords, "Intersection point"
                 )
