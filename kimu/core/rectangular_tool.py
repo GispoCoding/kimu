@@ -45,6 +45,12 @@ class RectangularMapping(SelectTool):
         self.layer = layer
         self.setLayer(self.layer)
 
+    def update_layer(self, layer: QgsVectorLayer) -> None:
+        layer.updateExtents()
+        layer.triggerRepaint()
+        layer.commitChanges()
+        iface.vectorLayerTools().stopEditing(layer)
+
     def canvasPressEvent(self, event: QgsMapToolEmitPoint) -> None:  # noqa: N802
         """Canvas click event."""
 
@@ -101,11 +107,7 @@ class RectangularMapping(SelectTool):
             else:
                 point_a = [points_a[0], points_a[1]]
 
-            option_points_layer_a.updateExtents()
-            option_points_layer_a.triggerRepaint()
-            option_points_layer_a.commitChanges()
-
-            iface.vectorLayerTools().stopEditing(option_points_layer_a)
+            self.update_layer(option_points_layer_a)
 
             # Let's remove layer scratch layer related to point A alternatives
             # since we have no use for this layer anymore
@@ -157,11 +159,7 @@ class RectangularMapping(SelectTool):
 
             point_b = selected_corners[0]
 
-            option_points_layer_b.updateExtents()
-            option_points_layer_b.triggerRepaint()
-            option_points_layer_b.commitChanges()
-
-            iface.vectorLayerTools().stopEditing(option_points_layer_b)
+            self.update_layer(option_points_layer_b)
 
             # Let's remove layer scratch layer related to point B alternatives
             # since we have no use for this layer anymore
@@ -175,12 +173,9 @@ class RectangularMapping(SelectTool):
 
             self._add_point_to_layer(point_b, selected_b, -1)
 
-            selected_b.updateExtents()
-            selected_b.triggerRepaint()
-            selected_b.commitChanges()
+            self.update_layer(selected_b)
 
-            iface.vectorLayerTools().stopEditing(selected_b)
-
+            layers_to_be_deleted = []
             if self.ui.get_c_measures() != "":
                 # c_measures are given in crs units (meters for EPSG: 3067)
                 c_measures = [
@@ -218,15 +213,11 @@ class RectangularMapping(SelectTool):
 
                         selected_corners.append([point_c[0], point_c[1]])
 
-                        option_points_layer_c.updateExtents()
-                        option_points_layer_c.triggerRepaint()
-                        option_points_layer_c.commitChanges()
-
-                        iface.vectorLayerTools().stopEditing(option_points_layer_c)
+                        self.update_layer(option_points_layer_c)
 
                         # Let's initialize variables we will need later on
                         skip = 0
-                        layers_to_be_deleted = []
+                        QgsProject.instance().removeMapLayer(option_points_layer_c)
                     else:
                         # Map the rest of the rectangular corner points (they will be located
                         # perpendicularly with respect to the line feature connecting two last
@@ -282,11 +273,7 @@ class RectangularMapping(SelectTool):
                         else:
                             skip = 1
 
-                        option_points_layer_d.updateExtents()
-                        option_points_layer_d.triggerRepaint()
-                        option_points_layer_d.commitChanges()
-
-                        iface.vectorLayerTools().stopEditing(option_points_layer_d)
+                        self.update_layer(option_points_layer_d)
 
                         # Let's remove layer scratch layer related to corner point
                         # alternatives since we have no use for this layer anymore
@@ -309,17 +296,13 @@ class RectangularMapping(SelectTool):
 
                             self._add_point_to_layer(point_d, selected_d, -2 - i)
 
-                            selected_d.updateExtents()
-                            selected_d.triggerRepaint()
-                            selected_d.commitChanges()
+                            self.update_layer(selected_d)
 
-                            iface.vectorLayerTools().stopEditing(selected_d)
+                        QgsProject.instance().removeMapLayer(selected_d)
 
             # The selection process of the corner points has ended so we
             # no longer have a need for these supporting temporary layers
             QgsProject.instance().removeMapLayer(selected_b)
-            QgsProject.instance().removeMapLayer(option_points_layer_c)
-            QgsProject.instance().removeMapLayer(selected_d)
             QgsProject.instance().removeMapLayers(layers_to_be_deleted)
 
             # Add a result layer into which the separately selected corner
@@ -331,11 +314,7 @@ class RectangularMapping(SelectTool):
             flat_list = [element for sublist in selected_corners for element in sublist]
             self._add_points_to_layer(flat_list, result_layer, 9999)
 
-            result_layer.updateExtents()
-            result_layer.triggerRepaint()
-            result_layer.commitChanges()
-
-            iface.vectorLayerTools().stopEditing(result_layer)
+            self.update_layer(result_layer)
 
             # Save the corner point features to the file user has chosen.
             # If such file path does not exist, add combined result layer to
