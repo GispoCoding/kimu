@@ -1,12 +1,11 @@
 import math
 from decimal import Decimal
-from typing import List
+from typing import List, Tuple
 
 from PyQt5.QtWidgets import QMessageBox
-from qgis import processing
 from qgis.core import (
+    QgsCoordinateReferenceSystem,
     QgsFeature,
-    QgsFeatureRequest,
     QgsField,
     QgsGeometry,
     QgsPalLayerSettings,
@@ -30,6 +29,7 @@ from ..qgis_plugin_tools.tools.resources import plugin_name
 from ..ui.line_circle_dockwidget import LineCircleDockWidget
 from .click_tool import ClickTool
 from .select_tool import SelectTool
+from .tool_functions import LineCoordinates
 
 LOGGER = setup_logger(plugin_name())
 
@@ -46,88 +46,64 @@ class IntersectionLineCircle(SelectTool):
 
     def _run_initial_checks(self) -> bool:
         """Checks that the selections made are applicable."""
-        selected_layer = iface.activeLayer()
+        all_layers = QgsProject.instance().mapLayers().values()
 
-        if isinstance(selected_layer, QgsVectorLayer) and selected_layer.isSpatial():
-            pass
-        else:
+        points_found = 0
+        crs_list: List[str] = []
+
+        def loop_features(points_found: int, points_added: int) -> Tuple[bool, int]:
+            for feature in layer.selectedFeatures():
+                if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
+                    points_found += points_added
+                    crs_list.append(layer.crs().toProj())
+                else:
+                    LOGGER.warning(
+                        tr("Please select layers with LineString or Point geometries"),
+                        extra={"details": ""},
+                    )
+                    return False, points_found
+            return True, points_found
+
+        for layer in all_layers:
+            if (
+                isinstance(layer, QgsVectorLayer)
+                and layer.isSpatial()
+                and layer.geometryType() == QgsWkbTypes.LineGeometry
+            ):
+                valid_features, points_found = loop_features(points_found, 2)
+                if not valid_features:
+                    return False
+            elif (
+                isinstance(layer, QgsVectorLayer)
+                and layer.isSpatial()
+                and layer.geometryType() == QgsWkbTypes.PointGeometry
+            ):
+                valid_features, points_found = loop_features(points_found, 1)
+                if not valid_features:
+                    return False
+            else:
+                pass
+
+        if len(set(crs_list)) != 1:
             LOGGER.warning(
-                tr("Please select a valid vector layer"),
+                tr("Please select only layers with same CRS"),
                 extra={"details": ""},
             )
             return False
-
-        if selected_layer.geometryType() == QgsWkbTypes.LineGeometry:
-
-            if len(selected_layer.selectedFeatures()) != 1:
-                LOGGER.warning(
-                    tr("Please select one line feature"),
-                    extra={"details": ""},
-                )
-                return False
-
-            if QgsWkbTypes.isSingleType(
-                list(selected_layer.getFeatures())[0].geometry().wkbType()
-            ):
-                pass
-            else:
-                LOGGER.warning(
-                    tr(
-                        "Please select a line layer with "
-                        "LineString geometries (instead "
-                        "of MultiLineString geometries)"
-                    ),
-                    extra={"details": ""},
-                )
-                return False
-
-            temp_layer = selected_layer.materialize(
-                QgsFeatureRequest().setFilterFids(selected_layer.selectedFeatureIds())
-            )
-            params1 = {"INPUT": temp_layer, "OUTPUT": "memory:"}
-            vertices = processing.run("native:extractvertices", params1)
-            vertices_layer = vertices["OUTPUT"]
-
-            if vertices_layer.featureCount() > 2:
-                LOGGER.warning(
-                    tr("Please use Explode line(s) tool first!"), extra={"details": ""}
-                )
-                return False
-
-        elif selected_layer.geometryType() == QgsWkbTypes.PointGeometry:
-
-            if len(selected_layer.selectedFeatures()) != 2:
-                LOGGER.warning(
-                    tr(
-                        "Please select two points in order to explicitly "
-                        "define a line feature"
-                    ),
-                    extra={"details": ""},
-                )
-                return False
-
-            if QgsWkbTypes.isSingleType(
-                list(selected_layer.getFeatures())[0].geometry().wkbType()
-            ):
-                pass
-            else:
-                LOGGER.warning(
-                    tr(
-                        "Please select a point layer with "
-                        "Point geometries (instead "
-                        "of MultiPoint geometries)"
-                    ),
-                    extra={"details": ""},
-                )
-                return False
-        else:
+        elif points_found != 2:
             LOGGER.warning(
-                tr("Please select a point or line layer"),
+                tr("Please select only either 1 line or 2 points"),
                 extra={"details": ""},
             )
             return False
-
-        return True
+        else:
+            crs = QgsCoordinateReferenceSystem()
+            crs.createFromProj(crs_list[0])
+            self.crs = crs
+            # NOTE: We are now allowing lines with > 2 vertices. This might be unwanted.
+            # Now the interesecting line is imagined to travel straight from first to
+            # last vertex in these cases.
+            return True
 
     # fmt: off
     def canvasPressEvent(  # noqa: N802
@@ -145,7 +121,8 @@ class IntersectionLineCircle(SelectTool):
 
             # Call for function extracting coordinate values attached to
             # the line feature to be intersected with a circle
-            line_coords = self._get_line_coords()
+            # line_coords = self._get_line_coords() # OLD!
+            line_coords = self._extract_points()
 
             # Call the functions capable of determining the parameter
             # values needed to find out intersection point(s)
@@ -155,7 +132,8 @@ class IntersectionLineCircle(SelectTool):
             self._intersect(line_coords, parameters, centroid)
 
     def _calculate_intersection_parameters(
-        self, line_coords: List[Decimal], centroid: List[Decimal]
+        # self, line_coords: List[Decimal], centroid: List[Decimal]
+        self, line_coords: LineCoordinates, centroid: List[Decimal]
     ) -> List[Decimal]:
         """Calculate values for a, b and c parameters"""
         # Radius is given in crs units (meters for EPSG: 3067)
@@ -183,84 +161,76 @@ class IntersectionLineCircle(SelectTool):
         # https://www.mathsisfun.com/algebra/quadratic-equation.html
         # for more information.
         a = (
-            (line_coords[3]) ** Decimal("2.0")
-            - Decimal("2.0") * line_coords[1] * line_coords[3]
-            + (line_coords[1]) ** Decimal("2.0")
-            + (line_coords[2]) ** Decimal("2.0")
-            - Decimal("2.0") * line_coords[0] * line_coords[2]
-            + (line_coords[0]) ** Decimal("2.0")
+            (line_coords.y2) ** Decimal("2.0")
+            - Decimal("2.0") * line_coords.y1 * line_coords.y2
+            + (line_coords.y1) ** Decimal("2.0")
+            + (line_coords.x2) ** Decimal("2.0")
+            - Decimal("2.0") * line_coords.x1 * line_coords.x2
+            + (line_coords.x1) ** Decimal("2.0")
         )
         b = (
-            -Decimal("2.0")
-            * (line_coords[3]) ** Decimal("2.0")
-            * line_coords[0]
-            + Decimal("2.0") * line_coords[1] * line_coords[3] * line_coords[2]
-            + Decimal("2.0") * line_coords[1] * line_coords[3] * line_coords[0]
-            - Decimal("2.0")
-            * (line_coords[1]) ** Decimal("2.0")
-            * line_coords[2]
-            - Decimal("2.0")
-            * centroid[0]
-            * (line_coords[2]) ** Decimal("2.0")
-            - Decimal("2.0")
-            * centroid[0]
-            * (line_coords[0]) ** Decimal("2.0")
-            + Decimal("4.0") * centroid[0] * line_coords[0] * line_coords[2]
-            - Decimal("2.0") * line_coords[2] * centroid[1] * line_coords[3]
-            + Decimal("2.0") * centroid[1] * line_coords[1] * line_coords[2]
-            + Decimal("2.0") * centroid[1] * line_coords[3] * line_coords[0]
-            - Decimal("2.0") * centroid[1] * line_coords[1] * line_coords[0]
+            -Decimal("2.0") * (line_coords.y2) ** Decimal("2.0") * line_coords.x1
+            + Decimal("2.0") * line_coords.y1 * line_coords.y2 * line_coords.x2
+            + Decimal("2.0") * line_coords.y1 * line_coords.y2 * line_coords.x1
+            - Decimal("2.0") * (line_coords.y1) ** Decimal("2.0") * line_coords.x2
+            - Decimal("2.0") * centroid[0] * (line_coords.x2) ** Decimal("2.0")
+            - Decimal("2.0") * centroid[0] * (line_coords.x1) ** Decimal("2.0")
+            + Decimal("4.0") * centroid[0] * line_coords.x1 * line_coords.x2
+            - Decimal("2.0") * line_coords.x2 * centroid[1] * line_coords.y2
+            + Decimal("2.0") * centroid[1] * line_coords.y1 * line_coords.x2
+            + Decimal("2.0") * centroid[1] * line_coords.y2 * line_coords.x1
+            - Decimal("2.0") * centroid[1] * line_coords.y1 * line_coords.x1
         )
         c = (
-            (line_coords[3]) ** Decimal("2.0")
-            * (line_coords[0]) ** Decimal("2.0")
+            (line_coords.y2) ** Decimal("2.0")
+            * (line_coords.x1) ** Decimal("2.0")
             - Decimal("2.0")
-            * line_coords[0]
-            * line_coords[1]
-            * line_coords[2]
-            * line_coords[3]
-            + (line_coords[1]) ** Decimal("2.0")
-            * (line_coords[2]) ** Decimal("2.0")
+            * line_coords.x1
+            * line_coords.y1
+            * line_coords.x2
+            * line_coords.y2
+            + (line_coords.y1) ** Decimal("2.0")
+            * (line_coords.x2) ** Decimal("2.0")
             + (centroid[0]) ** Decimal("2.0")
-            * (line_coords[2]) ** Decimal("2.0")
+            * (line_coords.x2) ** Decimal("2.0")
             - Decimal("2.0")
             * (centroid[0]) ** Decimal("2.0")
-            * line_coords[0]
-            * line_coords[2]
+            * line_coords.x1
+            * line_coords.x2
             + (centroid[0]) ** Decimal("2.0")
-            * (line_coords[0]) ** Decimal("2.0")
+            * (line_coords.x1) ** Decimal("2.0")
             + Decimal("2.0")
-            * line_coords[2]
+            * line_coords.x2
             * centroid[1]
-            * line_coords[3]
-            * line_coords[0]
+            * line_coords.y2
+            * line_coords.x1
             - Decimal("2.0")
-            * (line_coords[2]) ** Decimal("2.0")
+            * (line_coords.x2) ** Decimal("2.0")
             * centroid[1]
-            * line_coords[1]
+            * line_coords.y1
             - Decimal("2.0")
-            * (line_coords[0]) ** Decimal("2.0")
+            * (line_coords.x1) ** Decimal("2.0")
             * centroid[1]
-            * line_coords[3]
+            * line_coords.y2
             + Decimal("2.0")
             * centroid[1]
-            * line_coords[1]
-            * line_coords[2]
-            * line_coords[0]
-            + (line_coords[2]) ** Decimal("2.0")
+            * line_coords.y1
+            * line_coords.x2
+            * line_coords.x1
+            + (line_coords.x2) ** Decimal("2.0")
             * (centroid[1]) ** Decimal("2.0")
-            - (line_coords[2]) ** Decimal("2.0") * r ** Decimal("2.0")
+            - (line_coords.x2) ** Decimal("2.0") * r ** Decimal("2.0")
             - Decimal("2.0")
-            * line_coords[0]
-            * line_coords[2]
+            * line_coords.x1
+            * line_coords.x2
             * (centroid[1]) ** Decimal("2.0")
             + Decimal("2.0")
-            * line_coords[0]
-            * line_coords[2]
+            * line_coords.x1
+            * line_coords.x2
             * r ** Decimal("2.0")
-            + (line_coords[0]) ** Decimal("2.0")
+            + (line_coords.x1) ** Decimal("2.0")
             * (centroid[1]) ** Decimal("2.0")
-            - (line_coords[0]) ** Decimal("2.0") * r ** Decimal("2.0")
+            - (line_coords.x1) ** Decimal("2.0") * r ** Decimal("2.0")
         )
         result = [a, b, c]
         return result
@@ -283,46 +253,40 @@ class IntersectionLineCircle(SelectTool):
                 extra={"details": tr(f"Details: {explanation}")},
             )
 
-    def _add_result_layers(
-        self,
-        x_sol1: QVariant.Double,
-        y_sol1: QVariant.Double,
-        x_sol2: QVariant.Double,
-        y_sol2: QVariant.Double,
-        centroid_x: QVariant.Double,
-        centroid_y: QVariant.Double
-    ) -> None:
-        """Triggered when result layer needs to be generated."""
-        result_layer1 = QgsVectorLayer("Point", "temp", "memory")
-        crs = self.layer.crs()
-        result_layer1.setCrs(crs)
-
-        result_layer1_dataprovider = result_layer1.dataProvider()
-        result_layer1_dataprovider.addAttributes(
+    def _create_result_layer(self) -> QgsVectorLayer:
+        result_layer = QgsVectorLayer("Point", "temp", "memory")
+        result_layer.setCrs(self.crs)
+        result_layer.dataProvider().addAttributes(
             [QgsField("id", QVariant.String),
              QgsField("xcoord", QVariant.Double),
              QgsField("ycoord", QVariant.Double),
              QgsField("centroid xcoord", QVariant.Double),
              QgsField("centroid ycoord", QVariant.Double)]
         )
-        result_layer1.updateFields()
+        result_layer.updateFields()
+        result_layer.setName(tr("Intersection point"))
+        result_layer.renderer().symbol().setSize(2)
+        result_layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
+        return result_layer
 
-        intersection_point1 = QgsPointXY(x_sol1, y_sol1)
-        f1 = QgsFeature()
-        f1.setGeometry(QgsGeometry.fromPointXY(intersection_point1))
-        f1.setAttributes(
-            ["Opt 1",
-             round(x_sol1, 3), round(y_sol1, 3),
-             round(centroid_x, 3), round(centroid_y, 3)]
-        )
-        result_layer1_dataprovider.addFeature(f1)
-        result_layer1.updateExtents()
-        result_layer1.triggerRepaint()
+    def _add_point_to_layer(
+        self, layer: QgsVectorLayer, coords: Tuple[float, float, float, float], id: str
+    ) -> QgsFeature:
+        intersection_point = QgsPointXY(coords[0], coords[1])
+        point_feature = QgsFeature()
+        point_feature.setGeometry(QgsGeometry.fromPointXY(intersection_point))
+        point_feature.setAttributes([id,
+                                     round(coords[0], 3),
+                                     round(coords[1], 3),
+                                     round(coords[2], 3),
+                                     round(coords[3], 3)]
+                                    )
+        layer.dataProvider().addFeature(point_feature)
+        layer.updateExtents()
+        layer.triggerRepaint()
+        return point_feature
 
-        result_layer1.setName(tr("Intersection point"))
-        result_layer1.renderer().symbol().setSize(2)
-        result_layer1.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
-
+    def _set_and_format_labels(self, layer: QgsVectorLayer) -> None:
         layer_settings = QgsPalLayerSettings()
         text_format = QgsTextFormat()
         text_format.setFont(QFont("FreeMono", 10))
@@ -338,35 +302,13 @@ class IntersectionLineCircle(SelectTool):
         layer_settings.dist = 2.0
         layer_settings.enabled = True
         layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
-        result_layer1.setLabelsEnabled(True)
-        result_layer1.setLabeling(layer_settings)
+        layer.setLabelsEnabled(True)
+        layer.setLabeling(layer_settings)
+        layer.triggerRepaint()
 
-        QgsProject.instance().addMapLayer(result_layer1)
-
-        # If the line forms a tangent to the circle (instead
-        # of genuinely intersecting with the circle),
-        # only one intersection point exists. Thus there is
-        # no need for second result layer
-        if x_sol1 == x_sol2:
-            # Save the mapped point features to the file user has chosen
-            if self.ui.get_output_file_path() != "":
-                self._write_output_to_file(result_layer1)
-                QgsProject.instance().removeMapLayer(result_layer1)
-            return
-
-        result_layer1.startEditing()
-
-        intersection_point2 = QgsPointXY(x_sol2, y_sol2)
-        f2 = QgsFeature()
-        f2.setGeometry(QgsGeometry.fromPointXY(intersection_point2))
-        f2.setAttributes(
-            ["Opt 2",
-             round(x_sol2, 3), round(y_sol2, 3),
-             round(centroid_x, 3), round(centroid_y, 3)]
-        )
-        result_layer1_dataprovider.addFeature(f2)
-        result_layer1.updateExtents()
-
+    def _select_point(
+        self, result_layer: QgsVectorLayer, point_1: QgsFeature, point_2: QgsFeature
+    ) -> None:
         # Let's decide which solution point is the desired one
         message_box = QMessageBox()
         message_box.setText(
@@ -375,52 +317,97 @@ class IntersectionLineCircle(SelectTool):
         message_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
         ret_a = message_box.exec()
         if ret_a == QMessageBox.Yes:
-            # Let's remove the not-selected solution point
-            result_layer1.deleteFeature(f2.id())
+            result_layer.deleteFeature(point_2.id())
         else:
-            # Let's remove the not-selected solution point
-            result_layer1.deleteFeature(f1.id())
-        result_layer1.commitChanges()
-        iface.vectorLayerTools().stopEditing(result_layer1)
+            result_layer.deleteFeature(point_1.id())
+
+    def _add_result_layers(
+        self,
+        x_sol1: QVariant.Double,
+        y_sol1: QVariant.Double,
+        x_sol2: QVariant.Double,
+        y_sol2: QVariant.Double,
+        centroid_x: QVariant.Double,
+        centroid_y: QVariant.Double,
+    ) -> None:
+        """Triggered when result layer needs to be generated."""
+
+        result_layer = self._create_result_layer()
+        point_1 = self._add_point_to_layer(
+            result_layer, (x_sol1, y_sol1, centroid_x, centroid_y), "Opt 1"
+        )
+        self._set_and_format_labels(result_layer)
+        QgsProject.instance().addMapLayer(result_layer)
+
+        # If the line forms a tangent to the circle (instead
+        # of genuinely intersecting with the circle),
+        # only one intersection point exists. Thus there is
+        # no need for second result layer
+        if x_sol1 == x_sol2:
+            if self.ui.get_output_file_path() != "":
+                self._write_output_to_file(result_layer)
+                QgsProject.instance().removeMapLayer(result_layer)
+            return
+
+        result_layer.startEditing()
+        point_2 = self._add_point_to_layer(
+            result_layer, (x_sol2, y_sol2, centroid_x, centroid_y), "Opt 2"
+        )
+        self._select_point(result_layer, point_1, point_2)
+
+        result_layer.commitChanges()
+        iface.vectorLayerTools().stopEditing(result_layer)
         # Save the mapped point features to the file user has chosen
         if self.ui.get_output_file_path() != "":
-            self._write_output_to_file(result_layer1)
-            QgsProject.instance().removeMapLayer(result_layer1)
+            self._write_output_to_file(result_layer)
+            QgsProject.instance().removeMapLayer(result_layer)
 
-    def _get_line_coords(self) -> List[Decimal]:
+    def _extract_points(self) -> LineCoordinates:
         """Extract start and end point coordinates which explicitly determine
         the line feature intersecting with the user defined circle."""
-        if self.iface.activeLayer().geometryType() == QgsWkbTypes.LineGeometry:
-            geometry = self.iface.activeLayer().selectedFeatures()[0].geometry()
-            line_feat = geometry.asPolyline()
-            start_point = QgsPointXY(line_feat[0])
-            end_point = QgsPointXY(line_feat[-1])
-            line_coords = [
-                Decimal(start_point.x()),
-                Decimal(start_point.y()),
-                Decimal(end_point.x()),
-                Decimal(end_point.y()),
-            ]
+        all_layers = QgsProject.instance().mapLayers().values()
+
+        selected_layers = []
+        for layer in all_layers:
+            if len(layer.selectedFeatures()) > 0:
+                selected_layers.append(layer)
+
+        # CASE LINE
+        if all(
+            layer.geometryType() == QgsWkbTypes.LineGeometry
+            for layer in selected_layers
+        ):
+            for layer in selected_layers:
+                for feat in layer.selectedFeatures():
+                    line_feat = feat.geometry().asPolyline()
+                    start_point = QgsPointXY(line_feat[0])
+                    end_point = QgsPointXY(line_feat[-1])
+                    line_coords = LineCoordinates(
+                        x1=Decimal(start_point.x()),
+                        x2=Decimal(end_point.x()),
+                        y1=Decimal(start_point.y()),
+                        y2=Decimal(end_point.y())
+                    )
+
+        # CASE POINTS
         else:
-            line_coords = [
-                Decimal(
-                    self.iface.activeLayer().selectedFeatures()[0].geometry().asPoint().x()
-                ),
-                Decimal(
-                    self.iface.activeLayer().selectedFeatures()[0].geometry().asPoint().y()
-                ),
-                Decimal(
-                    self.iface.activeLayer().selectedFeatures()[1].geometry().asPoint().x()
-                ),
-                Decimal(
-                    self.iface.activeLayer().selectedFeatures()[1].geometry().asPoint().y()
-                ),
-            ]
+            points = []
+            for layer in selected_layers:
+                for feat in layer.selectedFeatures():
+                    points.append(feat.geometry().asPoint())
+
+            # Create a line out of the two lone points
+            line_coords = LineCoordinates(
+                x1=Decimal(points[0].x()),
+                x2=Decimal(points[1].x()),
+                y1=Decimal(points[0].y()),
+                y2=Decimal(points[1].y())
+            )
 
         return line_coords
 
     def _intersect(
-        self, line_coords: List[Decimal], parameters: List[Decimal], centroid: List[Decimal]
+        self, line_coords: LineCoordinates, parameters: List[Decimal], centroid: List[Decimal]
     ) -> None:
         """Determine the intersection point(s) of the selected
         line and implicitly determined (centroid+radius) circle."""
@@ -445,12 +432,12 @@ class IntersectionLineCircle(SelectTool):
 
         y_sol1 = float(
             (
-                Decimal(x_sol1) * line_coords[3]
-                - line_coords[0] * line_coords[3]
-                - Decimal(x_sol1) * line_coords[1]
-                + line_coords[2] * line_coords[1]
+                Decimal(x_sol1) * line_coords.y2
+                - line_coords.x1 * line_coords.y2
+                - Decimal(x_sol1) * line_coords.y1
+                + line_coords.x2 * line_coords.y1
             )
-            / (line_coords[2] - line_coords[0])
+            / (line_coords.x2 - line_coords.x1)
         )
 
         x_sol2 = float((-parameters[1] - Decimal(math.sqrt(sqrt_in))) / (
@@ -459,12 +446,12 @@ class IntersectionLineCircle(SelectTool):
 
         y_sol2 = float(
             (
-                Decimal(x_sol2) * line_coords[3]
-                - line_coords[0] * line_coords[3]
-                - Decimal(x_sol2) * line_coords[1]
-                + line_coords[2] * line_coords[1]
+                Decimal(x_sol2) * line_coords.y2
+                - line_coords.x1 * line_coords.y2
+                - Decimal(x_sol2) * line_coords.y1
+                + line_coords.x2 * line_coords.y1
             )
-            / (line_coords[2] - line_coords[0])
+            / (line_coords.x2 - line_coords.x1)
         )
 
         # Check that the intersection point(s) lie(s) in the
