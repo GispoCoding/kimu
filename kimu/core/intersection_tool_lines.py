@@ -18,7 +18,7 @@ from qgis.core import (
 )
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor, QFont
-from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox
+from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox, QPushButton
 from qgis.utils import iface
 
 from ..qgis_plugin_tools.tools.custom_logging import setup_logger
@@ -186,6 +186,18 @@ class IntersectionLines:
             return False
         return True
 
+    def _check_outside_canvas(self, coords: Tuple[float, float]) -> bool:
+        extent = iface.mapCanvas().extent()
+        if (
+            coords[0] < extent.xMinimum()
+            or coords[0] > extent.xMaximum()
+            or coords[1] < extent.yMinimum()
+            or coords[1] > extent.yMaximum()
+        ):
+            return True
+        else:
+            return False
+
     def _calculate_coords(
         self, line1_coords: LineCoordinates, line2_coords: LineCoordinates
     ) -> Tuple[float, float]:
@@ -232,16 +244,6 @@ class IntersectionLines:
             * (Decimal(x) - line1_coords.x1)
             + line1_coords.y1
         )
-
-        # Check if the intersection point lies outside of canvas extent
-        extent = iface.mapCanvas().extent()
-        if (
-            x < extent.xMinimum()
-            or x > extent.xMaximum()
-            or y < extent.yMinimum()
-            or y > extent.yMaximum()
-        ):
-            self._log_warning("Intersection point lies outside of the map canvas!")
 
         return x, y
 
@@ -321,6 +323,7 @@ class IntersectionLines:
         result_layer.setName(tr("Intersection point"))
         result_layer.renderer().symbol().setSize(2)
         result_layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
+        QgsProject.instance().addMapLayer(result_layer)
         return result_layer
 
     def _add_point_to_layer(
@@ -355,27 +358,30 @@ class IntersectionLines:
         layer.triggerRepaint()
 
     def _select_intersection_point(self, layer: QgsVectorLayer, points: List) -> None:
-        for point in points:
-            message_box = QMessageBox()
-            message_box.setText(
-                tr(
-                    f"Do you want to choose option {point[0]} for the intersection point?"
-                )
-            )
-            message_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-            choice = message_box.exec()
-            if choice == QMessageBox.Yes:
-                # Remove all other points left
-                for feature in layer.getFeatures():
-                    if feature.id() != point.id():
-                        layer.dataProvider().deleteFeatures([feature.id()])
-                break
-            else:
-                # Remove this point since it was not chosen
-                layer.dataProvider().deleteFeatures([point.id()])
-                # If only 1 feature left, stop asking
-                if len(list(layer.getFeatures())) == 1:
-                    break
+
+        message_box = QMessageBox()
+        message_box.setText(tr("Which point do you want to select?"))
+
+        button_1 = QPushButton("Opt 1")
+        message_box.addButton(button_1, QMessageBox.ActionRole)
+        button_1.clicked.connect(lambda: whichbtn(button_1))
+
+        button_2 = QPushButton("Opt 2")
+        message_box.addButton(button_2, QMessageBox.ActionRole)
+        button_2.clicked.connect(lambda: whichbtn(button_2))
+
+        if len(points) == 3:
+            button_3 = QPushButton("Opt 3")
+            message_box.addButton(button_3, QMessageBox.ActionRole)
+            button_3.clicked.connect(lambda: whichbtn(button_3))
+
+        def whichbtn(button: QPushButton) -> None:
+            id = button.text()[-1]
+            for feature in layer.getFeatures():
+                if feature.id() != int(id):
+                    layer.dataProvider().deleteFeatures([feature.id()])
+
+        message_box.exec()
 
     def _write_output_to_file(
         self, layer: QgsVectorLayer, output_file_path: str
@@ -418,20 +424,53 @@ class IntersectionLines:
             crs = QgsCoordinateReferenceSystem()
             crs.createFromId(crs_id)
 
+            old_active_layer = iface.activeLayer()
+
             # CASE multiple potential intersection points
             if isinstance(line_points[0], QgsPointXY):
                 all_intersection_coords = self._calculate_multiple_coords(line_points)
-                result_layer = self._create_result_layer(crs)
-                QgsProject.instance().addMapLayer(result_layer)
-
-                i = 1
-                point_features = []
-                for coords in all_intersection_coords:
-                    point = self._add_point_to_layer(result_layer, coords, f"Opt {i}")
-                    point_features.append(point)
-                    i += 1
-                self._set_and_format_labels(result_layer)
-                self._select_intersection_point(result_layer, point_features)
+                coords_in_extent = [
+                    coords
+                    for coords in all_intersection_coords
+                    if not self._check_outside_canvas(coords)
+                ]
+                if len(coords_in_extent) == 0:
+                    self._log_warning(
+                        "All potential intersection points lie outside of the map canvas!"
+                    )
+                    return
+                elif len(coords_in_extent) == 1:
+                    result_layer = self._create_result_layer(crs)
+                    self._add_point_to_layer(
+                        result_layer, coords_in_extent[0], "Intersection point"
+                    )
+                    excluded_points = len(all_intersection_coords) - len(
+                        coords_in_extent
+                    )
+                    self._log_warning(
+                        f"{excluded_points} \
+                        potential intersection points lie outside of the map canvas!"
+                    )
+                else:
+                    result_layer = self._create_result_layer(crs)
+                    i = 1
+                    point_features = []
+                    for coords in coords_in_extent:
+                        point = self._add_point_to_layer(
+                            result_layer, coords, f"Opt {i}"
+                        )
+                        point_features.append(point)
+                        i += 1
+                    excluded_points = len(all_intersection_coords) - len(
+                        coords_in_extent
+                    )
+                    if excluded_points > 0:
+                        self._log_warning(
+                            f"{excluded_points} \
+                            potential intersection points lie outside of the map canvas!"
+                        )
+                    self._set_and_format_labels(result_layer)
+                    self._select_intersection_point(result_layer, point_features)
 
             # CASE one intersection point
             else:
@@ -440,8 +479,12 @@ class IntersectionLines:
                 intersection_coords = self._calculate_coords(
                     line_points[0], line_points[1]
                 )
+                if self._check_outside_canvas(intersection_coords):
+                    self._log_warning(
+                        "Intersection point lies outside of the map canvas!"
+                    )
+                    return
                 result_layer = self._create_result_layer(crs)
-                QgsProject.instance().addMapLayer(result_layer)
                 self._add_point_to_layer(
                     result_layer, intersection_coords, "Intersection point"
                 )
@@ -449,7 +492,7 @@ class IntersectionLines:
             result_layer.commitChanges()
             iface.vectorLayerTools().stopEditing(result_layer)
 
-            # Ask if user wants to save file
+            # Ask if user wants to save to file
             self.dlg = IntersectLinesDialog(iface)
             self.dlg.pushButton.clicked.connect(self.select_output_file)
             self.dlg.show()
@@ -458,6 +501,8 @@ class IntersectionLines:
             if save_to_file:
                 self._write_output_to_file(result_layer, self.dlg.lineEdit.text())
                 QgsProject.instance().removeMapLayer(result_layer.id())
+
+            iface.setActiveLayer(old_active_layer)
 
     @staticmethod
     def _log_warning(message: str, details: str = "") -> None:
