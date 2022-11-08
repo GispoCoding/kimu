@@ -18,7 +18,7 @@ from qgis.core import (
 )
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor, QFont
-from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox
+from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox, QPushButton
 from qgis.utils import iface
 
 from ..qgis_plugin_tools.tools.custom_logging import setup_logger
@@ -358,27 +358,30 @@ class IntersectionLines:
         layer.triggerRepaint()
 
     def _select_intersection_point(self, layer: QgsVectorLayer, points: List) -> None:
-        for point in points:
-            message_box = QMessageBox()
-            message_box.setText(
-                tr(
-                    f"Do you want to choose option {point[0]} for the intersection point?"
-                )
-            )
-            message_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-            choice = message_box.exec()
-            if choice == QMessageBox.Yes:
-                # Remove all other points left
-                for feature in layer.getFeatures():
-                    if feature.id() != point.id():
-                        layer.dataProvider().deleteFeatures([feature.id()])
-                break
-            else:
-                # Remove this point since it was not chosen
-                layer.dataProvider().deleteFeatures([point.id()])
-                # If only 1 feature left, stop asking
-                if len(list(layer.getFeatures())) == 1:
-                    break
+
+        message_box = QMessageBox()
+        message_box.setText(tr("Which point do you want to select?"))
+
+        button_1 = QPushButton("Opt 1")
+        message_box.addButton(button_1, QMessageBox.ActionRole)
+        button_1.clicked.connect(lambda: whichbtn(button_1))
+
+        button_2 = QPushButton("Opt 2")
+        message_box.addButton(button_2, QMessageBox.ActionRole)
+        button_2.clicked.connect(lambda: whichbtn(button_2))
+
+        if len(points) == 3:
+            button_3 = QPushButton("Opt 3")
+            message_box.addButton(button_3, QMessageBox.ActionRole)
+            button_3.clicked.connect(lambda: whichbtn(button_3))
+
+        def whichbtn(button: QPushButton) -> None:
+            id = button.text()[-1]
+            for feature in layer.getFeatures():
+                if feature.id() != int(id):
+                    layer.dataProvider().deleteFeatures([feature.id()])
+
+        message_box.exec()
 
     def _write_output_to_file(
         self, layer: QgsVectorLayer, output_file_path: str
@@ -420,6 +423,8 @@ class IntersectionLines:
             line_points, crs_id = self._extract_points_and_crs()
             crs = QgsCoordinateReferenceSystem()
             crs.createFromId(crs_id)
+
+            old_active_layer = iface.activeLayer()
 
             # CASE multiple potential intersection points
             if isinstance(line_points[0], QgsPointXY):
@@ -496,6 +501,8 @@ class IntersectionLines:
             if save_to_file:
                 self._write_output_to_file(result_layer, self.dlg.lineEdit.text())
                 QgsProject.instance().removeMapLayer(result_layer.id())
+
+            iface.setActiveLayer(old_active_layer)
 
     @staticmethod
     def _log_warning(message: str, details: str = "") -> None:
