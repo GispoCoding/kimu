@@ -4,11 +4,6 @@ from typing import List
 from qgis.core import QgsProject, QgsSnappingConfig, QgsTolerance
 from qgis.gui import QgisInterface, QgsMapCanvas, QgsMapToolEmitPoint, QgsSnapIndicator
 
-from ..qgis_plugin_tools.tools.custom_logging import setup_logger
-from ..qgis_plugin_tools.tools.resources import plugin_name
-
-LOGGER = setup_logger(plugin_name())
-
 
 class ClickTool(QgsMapToolEmitPoint):
     """Base class for selecting features from canvas."""

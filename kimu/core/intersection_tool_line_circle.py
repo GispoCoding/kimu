@@ -13,7 +13,6 @@ from qgis.core import (
     QgsProject,
     QgsTextBufferSettings,
     QgsTextFormat,
-    QgsVectorFileWriter,
     QgsVectorLayer,
     QgsVectorLayerSimpleLabeling,
     QgsWkbTypes,
@@ -23,26 +22,22 @@ from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor, QFont
 from qgis.utils import iface
 
-from ..qgis_plugin_tools.tools.custom_logging import setup_logger
 from ..qgis_plugin_tools.tools.i18n import tr
-from ..qgis_plugin_tools.tools.resources import plugin_name
 from ..ui.line_circle_dockwidget import LineCircleDockWidget
 from .click_tool import ClickTool
 from .select_tool import SelectTool
-from .tool_functions import LineCoordinates
-
-LOGGER = setup_logger(plugin_name())
+from .tool_functions import (
+    LineCoordinates,
+    check_within_canvas,
+    log_warning,
+    write_output_to_file,
+)
 
 
 class IntersectionLineCircle(SelectTool):
     def __init__(self, iface: QgisInterface, dock_widget: LineCircleDockWidget) -> None:
         super().__init__(iface)
         self.ui: LineCircleDockWidget = dock_widget
-
-    def active_changed(self, layer: QgsVectorLayer) -> None:
-        """Triggered when active layer changes."""
-        self.layer = layer
-        self.setLayer(self.layer)
 
     def _run_initial_checks(self) -> bool:
         """Checks that the selections made are applicable."""
@@ -57,9 +52,8 @@ class IntersectionLineCircle(SelectTool):
                     points_found += points_added
                     crs_list.append(layer.crs().toProj())
                 else:
-                    LOGGER.warning(
-                        tr("Please select layers with LineString or Point geometries"),
-                        extra={"details": ""},
+                    log_warning(
+                        "Please select layers with LineString or Point geometries"
                     )
                     return False, points_found
             return True, points_found
@@ -85,16 +79,10 @@ class IntersectionLineCircle(SelectTool):
                 pass
 
         if len(set(crs_list)) != 1:
-            LOGGER.warning(
-                tr("Please select only layers with same CRS"),
-                extra={"details": ""},
-            )
+            log_warning("Please select only layers with same CRS")
             return False
         elif points_found != 2:
-            LOGGER.warning(
-                tr("Please select only either 1 line or 2 points"),
-                extra={"details": ""},
-            )
+            log_warning("Please select only either 1 line or 2 points")
             return False
         else:
             crs = QgsCoordinateReferenceSystem()
@@ -121,7 +109,6 @@ class IntersectionLineCircle(SelectTool):
 
             # Call for function extracting coordinate values attached to
             # the line feature to be intersected with a circle
-            # line_coords = self._get_line_coords() # OLD!
             line_coords = self._extract_points()
 
             # Call the functions capable of determining the parameter
@@ -235,24 +222,6 @@ class IntersectionLineCircle(SelectTool):
         result = [a, b, c]
         return result
 
-    def _write_output_to_file(self, layer: QgsVectorLayer) -> None:
-        """Writes the selected corner points to a specified file"""
-        output_file_path = self.ui.get_output_file_path()
-        writer_options = QgsVectorFileWriter.SaveVectorOptions()
-        writer_options.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
-        error, explanation = QgsVectorFileWriter.writeAsVectorFormatV2(
-            layer,
-            output_file_path,
-            QgsProject.instance().transformContext(),
-            writer_options,
-        )
-
-        if error:
-            LOGGER.warning(
-                tr(f"Error writing output to file, error code {error}"),
-                extra={"details": tr(f"Details: {explanation}")},
-            )
-
     def _create_result_layer(self) -> QgsVectorLayer:
         result_layer = QgsVectorLayer("Point", "temp", "memory")
         result_layer.setCrs(self.crs)
@@ -332,6 +301,8 @@ class IntersectionLineCircle(SelectTool):
     ) -> None:
         """Triggered when result layer needs to be generated."""
 
+        old_active_layer = iface.activeLayer()
+
         result_layer = self._create_result_layer()
         point_1 = self._add_point_to_layer(
             result_layer, (x_sol1, y_sol1, centroid_x, centroid_y), "Opt 1"
@@ -339,28 +310,24 @@ class IntersectionLineCircle(SelectTool):
         self._set_and_format_labels(result_layer)
         QgsProject.instance().addMapLayer(result_layer)
 
-        # If the line forms a tangent to the circle (instead
-        # of genuinely intersecting with the circle),
-        # only one intersection point exists. Thus there is
-        # no need for second result layer
-        if x_sol1 == x_sol2:
-            if self.ui.get_output_file_path() != "":
-                self._write_output_to_file(result_layer)
-                QgsProject.instance().removeMapLayer(result_layer)
-            return
+        # If the line does not form a tangent to the circle,
+        # two intersection points exists.
+        if x_sol1 != x_sol2:
+            result_layer.startEditing()
+            point_2 = self._add_point_to_layer(
+                result_layer, (x_sol2, y_sol2, centroid_x, centroid_y), "Opt 2"
+            )
+            self._select_point(result_layer, point_1, point_2)
 
-        result_layer.startEditing()
-        point_2 = self._add_point_to_layer(
-            result_layer, (x_sol2, y_sol2, centroid_x, centroid_y), "Opt 2"
-        )
-        self._select_point(result_layer, point_1, point_2)
+            result_layer.commitChanges()
+            iface.vectorLayerTools().stopEditing(result_layer)
 
-        result_layer.commitChanges()
-        iface.vectorLayerTools().stopEditing(result_layer)
-        # Save the mapped point features to the file user has chosen
-        if self.ui.get_output_file_path() != "":
-            self._write_output_to_file(result_layer)
+        output_path = self.ui.get_output_file_path()
+        if output_path != "":
+            write_output_to_file(result_layer, output_path)
             QgsProject.instance().removeMapLayer(result_layer)
+
+        iface.setActiveLayer(old_active_layer)
 
     def _extract_points(self) -> LineCoordinates:
         """Extract start and end point coordinates which explicitly determine
@@ -419,10 +386,7 @@ class IntersectionLineCircle(SelectTool):
             - Decimal("4.0") * parameters[0] * parameters[2]
         )
         if sqrt_in < 0.0 or parameters[0] == 0.0:
-            LOGGER.warning(
-                tr("There is no intersection point(s)!"),
-                extra={"details": ""},
-            )
+            log_warning("There is no intersection point(s)!")
             return
 
         # Computing the coordinates for the intersection point(s)
@@ -456,30 +420,11 @@ class IntersectionLineCircle(SelectTool):
 
         # Check that the intersection point(s) lie(s) in the
         # map canvas extent
-        extent = iface.mapCanvas().extent()
-
-        if (
-            x_sol1 < extent.xMinimum()
-            or x_sol1 > extent.xMaximum()
-            or y_sol1 < extent.yMinimum()
-            or y_sol1 > extent.yMaximum()
-        ):
-            LOGGER.warning(
-                tr("Intersection point 1 lies outside of the map canvas!"),
-                extra={"details": ""},
-            )
+        if not check_within_canvas((x_sol1, y_sol1)):
+            log_warning("Intersection point 1 lies outside of the map canvas!")
             return
-
-        if (
-            x_sol2 < extent.xMinimum()
-            or x_sol2 > extent.xMaximum()
-            or y_sol2 < extent.yMinimum()
-            or y_sol2 > extent.yMaximum()
-        ):
-            LOGGER.warning(
-                tr("Intersection point 2 lies outside of the map canvas!"),
-                extra={"details": ""},
-            )
+        if not check_within_canvas((x_sol2, y_sol2)):
+            log_warning("Intersection point 2 lies outside of the map canvas!")
             return
 
         centroid_x = float(centroid[0])

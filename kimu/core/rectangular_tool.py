@@ -14,7 +14,6 @@ from qgis.core import (
     QgsProject,
     QgsTextBufferSettings,
     QgsTextFormat,
-    QgsVectorFileWriter,
     QgsVectorLayer,
     QgsVectorLayerSimpleLabeling,
     QgsWkbTypes,
@@ -24,26 +23,17 @@ from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor, QFont
 from qgis.utils import iface
 
-from ..qgis_plugin_tools.tools.custom_logging import setup_logger
 from ..qgis_plugin_tools.tools.i18n import tr
-from ..qgis_plugin_tools.tools.resources import plugin_name
 from ..ui.rectangular_dockwidget import RectangularDockWidget
 from .click_tool import ClickTool
 from .select_tool import SelectTool
-
-LOGGER = setup_logger(plugin_name())
+from .tool_functions import check_within_canvas, log_warning, write_output_to_file
 
 
 class RectangularMapping(SelectTool):
     def __init__(self, dock_widget: RectangularDockWidget) -> None:
         super().__init__(iface)
         self.ui: RectangularDockWidget = dock_widget
-
-    def active_changed(self, layer: QgsVectorLayer) -> None:
-        """Triggered when active layer changes."""
-
-        self.layer = layer
-        self.setLayer(self.layer)
 
     def update_layer(self, layer: QgsVectorLayer) -> None:
         layer.updateExtents()
@@ -71,7 +61,7 @@ class RectangularMapping(SelectTool):
             # Determine parameter values for solving the quadratic equation in hand
             parameters = self._calculate_parameters(selected_line_coords, a_measure)
 
-            if a_measure != Decimal("0.000"):
+            if a_measure > Decimal(0):
                 # Let's locate alternative solutions for point A
                 try:
                     points_a = self._locate_point_a(selected_line_coords, parameters)
@@ -81,11 +71,10 @@ class RectangularMapping(SelectTool):
                 points_a = [selected_line_coords[0], selected_line_coords[1]]
 
             if points_a == []:
-                LOGGER.warning(
-                    tr("Search of the point A was failed!"),
-                    extra={"details": ""},
-                )
+                log_warning("Search of the point A was failed!")
                 return
+
+            old_active_layer = iface.activeLayer()
 
             # Let's show user the solution points and let the user
             # decide which is the desired one
@@ -116,7 +105,7 @@ class RectangularMapping(SelectTool):
             # b_measure is given in crs units (meters for EPSG: 3067)
             b_measure = Decimal(self.ui.get_b_measure())
 
-            if b_measure != Decimal("0.000"):
+            if b_measure > Decimal(0):
                 # Let's locate alternative solutions for point B
                 try:
                     points_b = self._locate_point_b(
@@ -128,10 +117,7 @@ class RectangularMapping(SelectTool):
                 points_b = point_a.copy()
 
             if points_b == []:
-                LOGGER.warning(
-                    tr("Search of the point B was failed!"),
-                    extra={"details": ""},
-                )
+                log_warning("Search of the point B was failed!")
                 return
 
             # Let's show user the solution points and let the user
@@ -142,7 +128,7 @@ class RectangularMapping(SelectTool):
 
             self._add_points_to_layer(points_b, option_points_layer_b, 1)
 
-            if b_measure > Decimal("0.000"):
+            if b_measure > Decimal(0):
                 # Let's ask the user which is the desired solution point
                 message_box = self._generate_option_point_messagebox(1)
                 ret = message_box.exec()
@@ -197,10 +183,7 @@ class RectangularMapping(SelectTool):
                         point_c = self._locate_point_c(c_measure, point_a, point_b)
 
                         if point_c == []:
-                            LOGGER.warning(
-                                tr("Search of the second corner point was failed!"),
-                                extra={"details": ""},
-                            )
+                            log_warning("Search of the second corner point was failed!")
                             return
 
                         # Let's show user the solution points and let the user
@@ -227,12 +210,9 @@ class RectangularMapping(SelectTool):
                         )
 
                         if new_corner_points == []:
-                            LOGGER.warning(
-                                tr(
-                                    "Search of the corner point related to an element in"
-                                    " the given building wall width list was failed!"
-                                ),
-                                extra={"details": ""},
+                            log_warning(
+                                "Search of the corner point related to an element in"
+                                " the given building wall width list was failed!"
                             )
                             return
 
@@ -319,10 +299,13 @@ class RectangularMapping(SelectTool):
             # Save the corner point features to the file user has chosen.
             # If such file path does not exist, add combined result layer to
             # the map as a temporary scratch layer
-            if self.ui.get_output_file_path() == "":
+            output_path = self.ui.get_output_file_path()
+            if output_path == "":
                 QgsProject.instance().addMapLayer(result_layer)
             else:
-                self._write_output_to_file(result_layer)
+                write_output_to_file(result_layer, output_path)
+
+            iface.setActiveLayer(old_active_layer)
 
     def _run_initial_checks(self) -> bool:
         """Checks that the selections made are applicable."""
@@ -332,19 +315,13 @@ class RectangularMapping(SelectTool):
         if isinstance(selected_layer, QgsVectorLayer) and selected_layer.isSpatial():
             pass
         else:
-            LOGGER.warning(
-                tr("Please select a valid vector layer"),
-                extra={"details": ""},
-            )
+            log_warning("Please select a valid vector layer")
             return False
 
         if selected_layer.geometryType() == QgsWkbTypes.LineGeometry:
 
             if len(selected_layer.selectedFeatures()) != 1:
-                LOGGER.warning(
-                    tr("Please select one line feature"),
-                    extra={"details": ""},
-                )
+                log_warning("Please select one line feature")
                 return False
 
             if QgsWkbTypes.isSingleType(
@@ -352,13 +329,10 @@ class RectangularMapping(SelectTool):
             ):
                 pass
             else:
-                LOGGER.warning(
-                    tr(
-                        "Please select a line layer with "
-                        "LineString geometries (instead "
-                        "of MultiLineString geometries)"
-                    ),
-                    extra={"details": ""},
+                log_warning(
+                    "Please select a line layer with "
+                    "LineString geometries (instead "
+                    "of MultiLineString geometries)"
                 )
                 return False
 
@@ -370,20 +344,14 @@ class RectangularMapping(SelectTool):
             vertices_layer = vertices["OUTPUT"]
 
             if vertices_layer.featureCount() > 2:
-                LOGGER.warning(
-                    tr("Please use Explode line(s) tool first!"), extra={"details": ""}
-                )
+                log_warning("Please use Explode line(s) tool first!")
                 return False
 
         elif selected_layer.geometryType() == QgsWkbTypes.PointGeometry:
 
             if len(selected_layer.selectedFeatures()) != 2:
-                LOGGER.warning(
-                    tr(
-                        "Please select two points in order to explicitly "
-                        "define a line feature"
-                    ),
-                    extra={"details": ""},
+                log_warning(
+                    "Please select two points in order to explicitly define a line feature"
                 )
                 return False
 
@@ -392,20 +360,14 @@ class RectangularMapping(SelectTool):
             ):
                 pass
             else:
-                LOGGER.warning(
-                    tr(
-                        "Please select a point layer with "
-                        "Point geometries (instead "
-                        "of MultiPoint geometries)"
-                    ),
-                    extra={"details": ""},
+                log_warning(
+                    "Please select a point layer with "
+                    "Point geometries (instead "
+                    "of MultiPoint geometries)"
                 )
                 return False
         else:
-            LOGGER.warning(
-                tr("Please select a point or line layer"),
-                extra={"details": ""},
-            )
+            log_warning("Please select a point or line layer")
             return False
 
         return True
@@ -443,12 +405,9 @@ class RectangularMapping(SelectTool):
                 point1 = QgsPointXY(selected_line_geometry[-1])
                 point2 = QgsPointXY(selected_line_geometry[0])
             else:
-                LOGGER.warning(
-                    tr(
-                        "Please select start or end point of the "
-                        "selected property boundary line."
-                    ),
-                    extra={"details": ""},
+                log_warning(
+                    "Please select start or end point of the "
+                    "selected property boundary line."
                 )
                 return []
 
@@ -495,12 +454,9 @@ class RectangularMapping(SelectTool):
                     self.iface.activeLayer().selectedFeatures()[0].geometry().asPoint()
                 )
             else:
-                LOGGER.warning(
-                    tr(
-                        "Please select start or end point of the "
-                        "selected property boundary line."
-                    ),
-                    extra={"details": ""},
+                log_warning(
+                    "Please select start or end point of the "
+                    "selected property boundary line."
                 )
                 return []
 
@@ -573,12 +529,8 @@ class RectangularMapping(SelectTool):
         )
 
         if sqrt_in < 0.0 or parameters[0] == 0.0:
-            LOGGER.warning(
-                tr(
-                    "Point A cannot be found on the property boundary"
-                    " line (or its extension)!"
-                ),
-                extra={"details": ""},
+            log_warning(
+                "Point A cannot be found on the property boundary line (or its extension)!"
             )
             return []
 
@@ -608,30 +560,12 @@ class RectangularMapping(SelectTool):
 
         # Check that the solution points lie in the
         # map canvas extent
-        extent = iface.mapCanvas().extent()
-
-        if (
-            x_a1 < extent.xMinimum()
-            or x_a1 > extent.xMaximum()
-            or y_a1 < extent.yMinimum()
-            or y_a1 > extent.yMaximum()
-        ):
-            LOGGER.warning(
-                tr("Point A opt 1 lies outside of the map canvas!"),
-                extra={"details": ""},
-            )
+        if not check_within_canvas((float(x_a1), float(y_a1))):
+            log_warning("Point A opt 1 lies outside of the map canvas!")
             return []
 
-        if (
-            x_a2 < extent.xMinimum()
-            or x_a2 > extent.xMaximum()
-            or y_a2 < extent.yMinimum()
-            or y_a2 > extent.yMaximum()
-        ):
-            LOGGER.warning(
-                tr("Point A opt 2 lies outside of the map canvas!"),
-                extra={"details": ""},
-            )
+        if not check_within_canvas((float(x_a2), float(y_a2))):
+            log_warning("Point A opt 2 lies outside of the map canvas!")
             return []
 
         points_a_res = [x_a1, y_a1, x_a2, y_a2]
@@ -715,32 +649,13 @@ class RectangularMapping(SelectTool):
             - x_a * line_coords[0]
         ) / (line_coords[3] - line_coords[1])
 
-        # Check that the solution points lie in the
-        # map canvas extent
-        extent = iface.mapCanvas().extent()
-
-        if (
-            x_b1 < extent.xMinimum()
-            or x_b1 > extent.xMaximum()
-            or y_b1 < extent.yMinimum()
-            or y_b1 > extent.yMaximum()
-        ):
-            LOGGER.warning(
-                tr("Point B opt 1 lies outside of the map canvas!"),
-                extra={"details": ""},
-            )
+        # Check that the solution points lie in the map canvas extent
+        if not check_within_canvas((float(x_b1), float(y_b1))):
+            log_warning("Point B opt 1 lies outside of the map canvas!")
             return []
 
-        if (
-            x_b2 < extent.xMinimum()
-            or x_b2 > extent.xMaximum()
-            or y_b2 < extent.yMinimum()
-            or y_b2 > extent.yMaximum()
-        ):
-            LOGGER.warning(
-                tr("Point B opt 2 lies outside of the map canvas!"),
-                extra={"details": ""},
-            )
+        if not check_within_canvas((float(x_b2), float(y_b2))):
+            log_warning("Point B opt 2 lies outside of the map canvas!")
             return []
 
         points_b_res = [x_b1, y_b1, x_b2, y_b2]
@@ -782,10 +697,7 @@ class RectangularMapping(SelectTool):
         # Check that the solution exists
         sqrt_in = b ** Decimal("2.0") - Decimal("4.0") * a * c
         if sqrt_in < 0.0 or a == 0.0:
-            LOGGER.warning(
-                tr("Solution point does not exist!"),
-                extra={"details": ""},
-            )
+            log_warning("Solution point does not exist!")
             return []
 
         # Computing the possible coordinates for corner point 2
@@ -887,32 +799,13 @@ class RectangularMapping(SelectTool):
             - point2[0] * point1[0]
         ) / (point2[1] - point1[1])
 
-        # Check that the corner points lie in the
-        # map canvas extent
-        extent = iface.mapCanvas().extent()
-
-        if (
-            x_d1 < extent.xMinimum()
-            or x_d1 > extent.xMaximum()
-            or y_d1 < extent.yMinimum()
-            or y_d1 > extent.yMaximum()
-        ):
-            LOGGER.warning(
-                tr("Solution point 1 lies outside of the map canvas!"),
-                extra={"details": ""},
-            )
+        # Check that the corner points lie in the map canvas extent
+        if not check_within_canvas((float(x_d1), float(y_d1))):
+            log_warning("Solution point 1 lies outside of the map canvas!")
             return []
 
-        if (
-            x_d2 < extent.xMinimum()
-            or x_d2 > extent.xMaximum()
-            or y_d2 < extent.yMinimum()
-            or y_d2 > extent.yMaximum()
-        ):
-            LOGGER.warning(
-                tr("Solution point 2 lies outside of the map canvas!"),
-                extra={"details": ""},
-            )
+        if not check_within_canvas((float(x_d2), float(y_d2))):
+            log_warning("Solution point 2 lies outside of the map canvas!")
             return []
 
         points_d_res = [x_d1, y_d1, x_d2, y_d2]
@@ -926,7 +819,7 @@ class RectangularMapping(SelectTool):
         """Creates a QgsVectorLayer for storing optional points."""
 
         layer = QgsVectorLayer("Point", "temp", "memory")
-        crs = self.layer.crs()
+        crs = iface.activeLayer().crs()
         layer.setCrs(crs)
         options_layer_dataprovider = layer.dataProvider()
         options_layer_dataprovider.addAttributes([QgsField("id", QVariant.String)])
@@ -1069,25 +962,3 @@ class RectangularMapping(SelectTool):
         message_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
 
         return message_box
-
-    def _write_output_to_file(
-        self,
-        layer: QgsVectorLayer,
-    ) -> None:
-        """Writes the selected corner points to a specified file."""
-
-        output_file_path = self.ui.get_output_file_path()
-        writer_options = QgsVectorFileWriter.SaveVectorOptions()
-        writer_options.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
-        error, explanation = QgsVectorFileWriter.writeAsVectorFormatV2(
-            layer,
-            output_file_path,
-            QgsProject.instance().transformContext(),
-            writer_options,
-        )
-
-        if error:
-            LOGGER.warning(
-                tr(f"Error writing output to file, error code {error}"),
-                extra={"details": tr(f"Details: {explanation}")},
-            )

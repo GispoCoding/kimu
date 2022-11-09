@@ -19,13 +19,10 @@ from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor
 from qgis.utils import iface
 
-from ..qgis_plugin_tools.tools.custom_logging import setup_logger
 from ..qgis_plugin_tools.tools.i18n import tr
-from ..qgis_plugin_tools.tools.resources import plugin_name
 from ..ui.displacement_dockwidget import DisplacementDockWidget
 from .select_tool import SelectTool
-
-LOGGER = setup_logger(plugin_name())
+from .tool_functions import check_within_canvas, log_warning
 
 
 class DisplaceLine(SelectTool):
@@ -42,19 +39,10 @@ class DisplaceLine(SelectTool):
         self.action().setChecked(True)
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.ui)
 
-    def active_changed(self, layer: QgsVectorLayer) -> None:
-        """Triggered when active layer changes."""
-
-        if (
-            isinstance(layer, QgsVectorLayer)
-            and layer.isSpatial()
-            and layer.geometryType() == QgsWkbTypes.LineGeometry
-        ):
-            self.layer = layer
-            self.setLayer(self.layer)
-
     def canvasPressEvent(self, event: QgsMapMouseEvent) -> None:  # noqa: N802
         """Click on the line feature to displace."""
+
+        old_active_layer = iface.activeLayer()
 
         selected_layer = iface.activeLayer()
 
@@ -65,10 +53,7 @@ class DisplaceLine(SelectTool):
         ):
             pass
         else:
-            LOGGER.warning(
-                tr("Please select a line layer"),
-                extra={"details": ""},
-            )
+            log_warning("Pleaes select a line layer")
             return
 
         feat = self._identify_and_extract_single_geometry(event)
@@ -76,13 +61,10 @@ class DisplaceLine(SelectTool):
         if QgsWkbTypes.isSingleType(feat.wkbType()):
             pass
         else:
-            LOGGER.warning(
-                tr(
-                    "Please select a line layer with "
-                    "LineString geometries (instead "
-                    "of MultiLineString geometries)"
-                ),
-                extra={"details": ""},
+            log_warning(
+                "Please select a line layer with "
+                "LineString geometries (instead "
+                "of MultiLineString geometries)"
             )
             return
 
@@ -127,22 +109,10 @@ class DisplaceLine(SelectTool):
 
         # Check that the solution points lie in the
         # map canvas extent
-        extent = iface.mapCanvas().extent()
-
-        if (
-            new_coord1[0] < extent.xMinimum()
-            or new_coord1[0] > extent.xMaximum()
-            or new_coord1[1] < extent.yMinimum()
-            or new_coord1[1] > extent.yMaximum()
-            or new_coord2[0] < extent.xMinimum()
-            or new_coord2[0] > extent.xMaximum()
-            or new_coord2[1] < extent.yMinimum()
-            or new_coord2[1] > extent.yMaximum()
-        ):
-            LOGGER.warning(
-                tr("Displaced line lies outside of the map canvas!"),
-                extra={"details": ""},
-            )
+        if not check_within_canvas(
+            (new_coord1[0], new_coord1[1])
+        ) or not check_within_canvas((new_coord2[0], new_coord2[1])):
+            log_warning("Displaced line lies outside of the map canvas!")
             return
 
         result_layer = self._create_temp_layer([new_coord1, new_coord2])
@@ -172,6 +142,8 @@ class DisplaceLine(SelectTool):
             QgsProject.instance().addMapLayer(result_layer3)
             QgsProject.instance().removeMapLayer(result_layer)
 
+        iface.setActiveLayer(old_active_layer)
+
     def _identify_and_extract_single_geometry(
         self, event: QgsMapMouseEvent
     ) -> QgsGeometry:
@@ -179,13 +151,10 @@ class DisplaceLine(SelectTool):
         Returns empty geometry if number of identified features != 1."""
 
         found_features: List[QgsMapToolIdentify.IdentifyResult] = self.identify(
-            event.x(), event.y(), [self.layer], QgsMapToolIdentify.ActiveLayer
+            event.x(), event.y(), [iface.activeLayer()], QgsMapToolIdentify.ActiveLayer
         )
         if len(found_features) != 1:
-            LOGGER.info(
-                tr("Please click on one line feature"),
-                extra={"details": "", "duration": 1},
-            )
+            log_warning("Please click on one line feature", duration=1)
             return QgsGeometry()
 
         geometry: QgsGeometry = found_features[0].mFeature.geometry()

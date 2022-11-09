@@ -30,7 +30,7 @@
       <item row="1" column="1">
        <widget class="QDoubleSpinBox" name="doublespinbox_radius">
         <property name="decimals">
-         <number>3</number>
+         <number>10</number>
         </property>
         <property name="maximum">
          <double>1000000000.000000000000000</double>
