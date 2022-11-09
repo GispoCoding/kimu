@@ -17,13 +17,10 @@ from qgis.core import (
 from qgis.gui import QgisInterface, QgsMapMouseEvent, QgsMapToolIdentify
 from qgis.PyQt.QtGui import QColor
 
-from ..qgis_plugin_tools.tools.custom_logging import setup_logger
 from ..qgis_plugin_tools.tools.i18n import tr
-from ..qgis_plugin_tools.tools.resources import plugin_name
 from ..ui.split_tool_dockwidget import SplitToolDockWidget
 from .select_tool import SelectTool
-
-LOGGER = setup_logger(plugin_name())
+from .tool_functions import log_warning
 
 
 class SplitTool(SelectTool):
@@ -37,21 +34,18 @@ class SplitTool(SelectTool):
         self.action().setChecked(True)
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.ui)
 
-    def active_changed(self, layer: QgsVectorLayer) -> None:
-        """Triggered when active layer changes."""
-        if (
-            isinstance(layer, QgsVectorLayer)
-            and layer.isSpatial()
-            and layer.geometryType() == QgsWkbTypes.LineGeometry
-        ):
-            self.layer = layer
-            self.setLayer(self.layer)
-
     def canvasPressEvent(self, event: QgsMapMouseEvent) -> None:  # noqa: N802
         """Handles split tool canvas click event.
         Splits line to N parts, extracts vertices."""
-        if self.iface.activeLayer() != self.layer:
-            LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
+        self.layer = self.iface.activeLayer()
+        if (
+            isinstance(self.layer, QgsVectorLayer)
+            and self.layer.isSpatial()
+            and self.layer.geometryType() == QgsWkbTypes.LineGeometry
+        ):
+            pass
+        else:
+            log_warning("Please select a line layer")
             return
 
         geometry = self._identify_and_extract_single_geometry(event)
@@ -74,9 +68,7 @@ class SplitTool(SelectTool):
             event.x(), event.y(), [self.layer], QgsMapToolIdentify.ActiveLayer
         )
         if len(found_features) != 1:
-            LOGGER.info(
-                tr("Please select one line"), extra={"details": "", "duration": 1}
-            )
+            log_warning("Please select one line", duration=1)
             self.ui.set_split_length(0)
             return QgsGeometry()
         self.layer.selectByIds(

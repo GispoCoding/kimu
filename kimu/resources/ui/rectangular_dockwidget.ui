@@ -30,7 +30,7 @@
       <item row="2" column="1">
        <widget class="QDoubleSpinBox" name="doublespinbox_a">
         <property name="decimals">
-         <number>3</number>
+         <number>10</number>
         </property>
         <property name="minimum">
          <double>-99999999.000000000000000</double>
@@ -53,7 +53,7 @@
       <item row="3" column="1">
        <widget class="QDoubleSpinBox" name="doublespinbox_b">
         <property name="decimals">
-         <number>3</number>
+         <number>10</number>
         </property>
         <property name="maximum">
          <double>99999999.000000000000000</double>

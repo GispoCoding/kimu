@@ -11,7 +11,6 @@ from qgis.core import (
     QgsProject,
     QgsTextBufferSettings,
     QgsTextFormat,
-    QgsVectorFileWriter,
     QgsVectorLayer,
     QgsVectorLayerSimpleLabeling,
     QgsWkbTypes,
@@ -21,20 +20,14 @@ from qgis.PyQt.QtGui import QColor, QFont
 from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox, QPushButton
 from qgis.utils import iface
 
-from ..qgis_plugin_tools.tools.custom_logging import setup_logger
 from ..qgis_plugin_tools.tools.i18n import tr
-from ..qgis_plugin_tools.tools.resources import plugin_name
 from ..ui.intersect_lines_dialog import IntersectLinesDialog
-
-LOGGER = setup_logger(plugin_name())
-
-
-class LineCoordinates:
-    def __init__(self, x1: Decimal, y1: Decimal, x2: Decimal, y2: Decimal) -> None:
-        self.x1 = x1
-        self.x2 = x2
-        self.y1 = y1
-        self.y2 = y2
+from .tool_functions import (
+    LineCoordinates,
+    check_within_canvas,
+    log_warning,
+    write_output_to_file,
+)
 
 
 class IntersectionLines:
@@ -58,9 +51,9 @@ class IntersectionLines:
                 if layer.geometryType() == QgsWkbTypes.LineGeometry:
                     if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
                         points_found += 2
-                        crs_list.append(layer.crs().srsid())
+                        crs_list.append(layer.crs().toProj())
                     else:
-                        self._log_warning(
+                        log_warning(
                             "Please select line layers with LineString \
                             geometries (instead of MultiLineString geometries)"
                         )
@@ -69,45 +62,46 @@ class IntersectionLines:
                 elif layer.geometryType() == QgsWkbTypes.PointGeometry:
                     if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
                         points_found += 1
-                        crs_list.append(layer.crs().srsid())
+                        crs_list.append(layer.crs().toProj())
                     else:
-                        self._log_warning(
+                        log_warning(
                             "Please select point layers with Point \
                             geometries (instead of MultiPoint geometries)"
                         )
                         return False
 
                 else:
-                    self._log_warning("Please select only vector line layers")
+                    log_warning("Please select only vector line layers")
                     return False
 
         if len(set(crs_list)) != 1:
-            self._log_warning("Please select only layers with same CRS")
+            log_warning("Please select only layers with same CRS")
             return False
         elif points_found != 4:
-            self._log_warning(
+            log_warning(
                 "Please select only either: 2 lines, 1 line and 2 points, or 4 points"
             )
             return False
         else:
+            crs = QgsCoordinateReferenceSystem()
+            crs.createFromProj(crs_list[0])
+            self.crs = crs
             # NOTE: We are now allowing lines with > 2 vertices. This might be unwanted.
             # Now the interesecting line is imagined to travel straight from first to
             # last vertex in these cases.
             return True
 
-    def _extract_points_and_crs(self) -> Tuple[List, str]:
+    def _extract_points(self) -> List:
         # Note that line_points can be either list of 2 LineCoordinates if intersection
         # point is clear, or if 4 separate points were the input line_points is
         # list of 4 QgsPointXY
         line_points = []
         all_layers = QgsProject.instance().mapLayers().values()
-        crs_id = ""
 
         selected_layers = []
         for layer in all_layers:
             if len(layer.selectedFeatures()) > 0:
                 selected_layers.append(layer)
-                crs_id = layer.crs().srsid()
 
         # CASE ONLY LINES
         if all(
@@ -169,7 +163,7 @@ class IntersectionLines:
                 )
             )
 
-        return line_points, crs_id
+        return line_points
 
     def _check_not_parallel(
         self, line1_coords: LineCoordinates, line2_coords: LineCoordinates
@@ -182,21 +176,9 @@ class IntersectionLines:
             line2_coords.x2 - line2_coords.x1
         )
         if slope1 == slope2:
-            self._log_warning("Lines are parallel; there is no intersection point!")
+            log_warning("Lines are parallel; there is no intersection point!")
             return False
         return True
-
-    def _check_outside_canvas(self, coords: Tuple[float, float]) -> bool:
-        extent = iface.mapCanvas().extent()
-        if (
-            coords[0] < extent.xMinimum()
-            or coords[0] > extent.xMaximum()
-            or coords[1] < extent.yMinimum()
-            or coords[1] > extent.yMaximum()
-        ):
-            return True
-        else:
-            return False
 
     def _calculate_coords(
         self, line1_coords: LineCoordinates, line2_coords: LineCoordinates
@@ -309,9 +291,9 @@ class IntersectionLines:
 
         return all_coords
 
-    def _create_result_layer(self, crs: QgsCoordinateReferenceSystem) -> QgsVectorLayer:
+    def _create_result_layer(self) -> QgsVectorLayer:
         result_layer = QgsVectorLayer("Point", "temp", "memory")
-        result_layer.setCrs(crs)
+        result_layer.setCrs(self.crs)
         result_layer.dataProvider().addAttributes(
             [
                 QgsField("id", QVariant.String),
@@ -383,27 +365,6 @@ class IntersectionLines:
 
         message_box.exec()
 
-    def _write_output_to_file(
-        self, layer: QgsVectorLayer, output_file_path: str
-    ) -> None:
-        """Writes the selected corner points to a specified file"""
-        output_file_path = self.dlg.lineEdit.text()
-        writer_options = QgsVectorFileWriter.SaveVectorOptions()
-        writer_options.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
-        # PyQGIS documentation doesnt tell what the last 2 str error outputs should be used for
-        error, explanation, _, _ = QgsVectorFileWriter.writeAsVectorFormatV3(
-            layer,
-            output_file_path,
-            QgsProject.instance().transformContext(),
-            writer_options,
-        )
-
-        if error:
-            self._log_warning(
-                f"Error writing output to file, error code {error}",
-                tr(f"Details: {explanation}"),
-            )
-
     def run(self) -> None:
         """Main method.
 
@@ -420,9 +381,7 @@ class IntersectionLines:
         8. Ask user if layer should be saved to disk. If yes, remove the temporary layer
         """
         if self._run_initial_checks() is True:
-            line_points, crs_id = self._extract_points_and_crs()
-            crs = QgsCoordinateReferenceSystem()
-            crs.createFromId(crs_id)
+            line_points = self._extract_points()
 
             old_active_layer = iface.activeLayer()
 
@@ -432,45 +391,44 @@ class IntersectionLines:
                 coords_in_extent = [
                     coords
                     for coords in all_intersection_coords
-                    if not self._check_outside_canvas(coords)
+                    if check_within_canvas(coords)
                 ]
                 if len(coords_in_extent) == 0:
-                    self._log_warning(
+                    log_warning(
                         "All potential intersection points lie outside of the map canvas!"
                     )
-                    return
-                elif len(coords_in_extent) == 1:
-                    result_layer = self._create_result_layer(crs)
-                    self._add_point_to_layer(
-                        result_layer, coords_in_extent[0], "Intersection point"
-                    )
-                    excluded_points = len(all_intersection_coords) - len(
-                        coords_in_extent
-                    )
-                    self._log_warning(
-                        f"{excluded_points} \
-                        potential intersection points lie outside of the map canvas!"
-                    )
                 else:
-                    result_layer = self._create_result_layer(crs)
-                    i = 1
-                    point_features = []
-                    for coords in coords_in_extent:
-                        point = self._add_point_to_layer(
-                            result_layer, coords, f"Opt {i}"
+                    result_layer = self._create_result_layer()
+                    if len(coords_in_extent) == 1:
+                        self._add_point_to_layer(
+                            result_layer, coords_in_extent[0], "Intersection point"
                         )
-                        point_features.append(point)
-                        i += 1
-                    excluded_points = len(all_intersection_coords) - len(
-                        coords_in_extent
-                    )
-                    if excluded_points > 0:
-                        self._log_warning(
+                        excluded_points = len(all_intersection_coords) - len(
+                            coords_in_extent
+                        )
+                        log_warning(
                             f"{excluded_points} \
                             potential intersection points lie outside of the map canvas!"
                         )
-                    self._set_and_format_labels(result_layer)
-                    self._select_intersection_point(result_layer, point_features)
+                    else:
+                        i = 1
+                        point_features = []
+                        for coords in coords_in_extent:
+                            point = self._add_point_to_layer(
+                                result_layer, coords, f"Opt {i}"
+                            )
+                            point_features.append(point)
+                            i += 1
+                        excluded_points = len(all_intersection_coords) - len(
+                            coords_in_extent
+                        )
+                        if excluded_points > 0:
+                            log_warning(
+                                f"{excluded_points} \
+                                potential intersection points lie outside of the map canvas!"
+                            )
+                        self._set_and_format_labels(result_layer)
+                        self._select_intersection_point(result_layer, point_features)
 
             # CASE one intersection point
             else:
@@ -479,12 +437,10 @@ class IntersectionLines:
                 intersection_coords = self._calculate_coords(
                     line_points[0], line_points[1]
                 )
-                if self._check_outside_canvas(intersection_coords):
-                    self._log_warning(
-                        "Intersection point lies outside of the map canvas!"
-                    )
+                if not check_within_canvas(intersection_coords):
+                    log_warning("Intersection point lies outside of the map canvas!")
                     return
-                result_layer = self._create_result_layer(crs)
+                result_layer = self._create_result_layer()
                 self._add_point_to_layer(
                     result_layer, intersection_coords, "Intersection point"
                 )
@@ -499,14 +455,11 @@ class IntersectionLines:
             save_to_file = self.dlg.exec_()
 
             if save_to_file:
-                self._write_output_to_file(result_layer, self.dlg.lineEdit.text())
-                QgsProject.instance().removeMapLayer(result_layer.id())
+                output_path = self.dlg.lineEdit.text()
+                if output_path != "":
+                    write_output_to_file(result_layer, output_path)
+                    QgsProject.instance().removeMapLayer(result_layer.id())
+                else:
+                    log_warning("Please specify an output path")
 
             iface.setActiveLayer(old_active_layer)
-
-    @staticmethod
-    def _log_warning(message: str, details: str = "") -> None:
-        LOGGER.warning(
-            tr(message),
-            extra={"details": details},
-        )

@@ -2,11 +2,6 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QCursor
 from qgis.gui import QgisInterface, QgsMapCanvas, QgsMapToolIdentifyFeature
 
-from ..qgis_plugin_tools.tools.custom_logging import setup_logger
-from ..qgis_plugin_tools.tools.resources import plugin_name
-
-LOGGER = setup_logger(plugin_name())
-
 
 class SelectTool(QgsMapToolIdentifyFeature):
     """Base class for selecting features from canvas."""
@@ -17,7 +12,7 @@ class SelectTool(QgsMapToolIdentifyFeature):
         self.canvas: QgsMapCanvas = iface.mapCanvas()
         super().__init__(self.canvas, self.layer)
         self.cursor = QCursor(Qt.CrossCursor)
-        self.iface.currentLayerChanged.connect(self.active_changed)
+        # self.iface.currentLayerChanged.connect(self.active_changed)
 
     def activate(self) -> None:
         """Called when tool is activated."""

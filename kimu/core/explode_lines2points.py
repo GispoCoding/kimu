@@ -9,11 +9,8 @@ from qgis.core import (
 from qgis.PyQt.QtGui import QColor
 from qgis.utils import iface
 
-from ..qgis_plugin_tools.tools.custom_logging import setup_logger
 from ..qgis_plugin_tools.tools.i18n import tr
-from ..qgis_plugin_tools.tools.resources import plugin_name
-
-LOGGER = setup_logger(plugin_name())
+from .tool_functions import log_warning
 
 
 class ExplodeLines2points:
@@ -32,7 +29,7 @@ class ExplodeLines2points:
         """Explodes selected line features to points."""
         layer = iface.activeLayer()
         if not self.__check_valid_layer(layer):
-            LOGGER.warning(tr("Please select a line layer"), extra={"details": ""})
+            log_warning("Please select a line layer")
             return
 
         point_params = {

@@ -9,19 +9,11 @@ from qgis.core import (
 from qgis.PyQt.QtGui import QColor
 from qgis.utils import iface
 
-from ..qgis_plugin_tools.tools.custom_logging import setup_logger
 from ..qgis_plugin_tools.tools.i18n import tr
-from ..qgis_plugin_tools.tools.resources import plugin_name
-
-# from .split_tool import SplitTool
-
-LOGGER = setup_logger(plugin_name())
+from .tool_functions import log_warning
 
 
 class ExplodeTool:
-    # def __init__(self, split_tool: SplitTool) -> None:
-    # self.split_tool = split_tool
-
     @staticmethod
     def __check_valid_layer(layer: QgsVectorLayer) -> bool:
         """Checks if layer is valid"""
@@ -37,11 +29,11 @@ class ExplodeTool:
         """Explodes selected polygon feature to lines."""
         layer = iface.activeLayer()
         if not self.__check_valid_layer(layer):
-            LOGGER.warning(tr("Please select a polygon layer"), extra={"details": ""})
+            log_warning("Please select a polygon layer")
             return
 
         if len(layer.selectedFeatures()) != 1:
-            LOGGER.warning(tr("Please select a single feature"), extra={"details": ""})
+            log_warning("Please select a single feature")
             return
 
         line_params = {

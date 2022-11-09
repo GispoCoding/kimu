@@ -1,7 +1,20 @@
 from decimal import Decimal
 from typing import List, Tuple
 
-from qgis.core import QgsPointXY, QgsProject, QgsWkbTypes
+from qgis.core import (
+    QgsPointXY,
+    QgsProject,
+    QgsVectorFileWriter,
+    QgsVectorLayer,
+    QgsWkbTypes,
+)
+from qgis.utils import iface
+
+from ..qgis_plugin_tools.tools.custom_logging import setup_logger
+from ..qgis_plugin_tools.tools.i18n import tr
+from ..qgis_plugin_tools.tools.resources import plugin_name
+
+LOGGER = setup_logger(plugin_name())
 
 
 class LineCoordinates:
@@ -10,6 +23,19 @@ class LineCoordinates:
         self.x2 = x2
         self.y1 = y1
         self.y2 = y2
+
+
+def check_within_canvas(coords: Tuple[float, float]) -> bool:
+    extent = iface.mapCanvas().extent()
+    if (
+        coords[0] >= extent.xMinimum()
+        and coords[0] <= extent.xMaximum()
+        and coords[1] >= extent.yMinimum()
+        and coords[1] <= extent.yMaximum()
+    ):
+        return True
+    else:
+        return False
 
 
 def extract_points_and_crs() -> Tuple[List, str]:
@@ -85,3 +111,37 @@ def extract_points_and_crs() -> Tuple[List, str]:
         )
 
     return line_points, crs_id
+
+
+def write_output_to_file(layer: QgsVectorLayer, output_path: str) -> None:
+    """Writes the selected layer to a specified file"""
+    writer_options = QgsVectorFileWriter.SaveVectorOptions()
+    writer_options.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
+    # PyQGIS documentation doesnt tell what the last 2 str error outputs should be used for
+    error, explanation, _, _ = QgsVectorFileWriter.writeAsVectorFormatV3(
+        layer,
+        output_path,
+        QgsProject.instance().transformContext(),
+        writer_options,
+    )
+
+    if error:
+        log_warning(
+            f"Error writing output to file, error code {error}",
+            details=tr(f"Details: {explanation}"),
+        )
+
+
+def log_warning(message: str, details: str = "", duration: int = None) -> None:
+    if duration is None:
+        LOGGER.warning(
+            tr(message),
+            extra={
+                "details": details,
+            },
+        )
+    else:
+        LOGGER.warning(
+            tr(message),
+            extra={"details": details, "duration": duration},
+        )
