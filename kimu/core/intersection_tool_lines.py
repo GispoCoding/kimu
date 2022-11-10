@@ -46,36 +46,42 @@ class IntersectionLines:
         crs_list = []
         # Check for selected features from all layers
         for layer in all_layers:
-            for feature in layer.selectedFeatures():
+            if isinstance(layer, QgsVectorLayer) and layer.isSpatial():
+                for feature in layer.selectedFeatures():
 
-                if layer.geometryType() == QgsWkbTypes.LineGeometry:
-                    if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
-                        points_found += 2
-                        crs_list.append(layer.crs().toProj())
+                    if layer.geometryType() == QgsWkbTypes.LineGeometry:
+                        if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
+                            points_found += 2
+                            crs_list.append(layer.crs().toProj())
+                        else:
+                            log_warning(
+                                "Please select line features with LineString \
+                                geometries (instead of MultiLineString geometries)"
+                            )
+                            return False
+
+                    elif layer.geometryType() == QgsWkbTypes.PointGeometry:
+                        if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
+                            points_found += 1
+                            crs_list.append(layer.crs().toProj())
+                        else:
+                            log_warning(
+                                "Please select point features with Point \
+                                geometries (instead of MultiPoint geometries)"
+                            )
+                            return False
+
                     else:
                         log_warning(
-                            "Please select line layers with LineString \
-                            geometries (instead of MultiLineString geometries)"
+                            "Please select features only from vector line or point layers"
                         )
                         return False
 
-                elif layer.geometryType() == QgsWkbTypes.PointGeometry:
-                    if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
-                        points_found += 1
-                        crs_list.append(layer.crs().toProj())
-                    else:
-                        log_warning(
-                            "Please select point layers with Point \
-                            geometries (instead of MultiPoint geometries)"
-                        )
-                        return False
-
-                else:
-                    log_warning("Please select only vector line layers")
-                    return False
-
-        if len(set(crs_list)) != 1:
-            log_warning("Please select only layers with same CRS")
+        if len(set(crs_list)) == 0:
+            log_warning("No vector features selected")
+            return False
+        elif len(set(crs_list)) != 1:
+            log_warning("Please select features only from layers with same CRS")
             return False
         elif points_found != 4:
             log_warning(

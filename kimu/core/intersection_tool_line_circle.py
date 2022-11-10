@@ -46,40 +46,46 @@ class IntersectionLineCircle(SelectTool):
         points_found = 0
         crs_list: List[str] = []
 
-        def loop_features(points_found: int, points_added: int) -> Tuple[bool, int]:
-            for feature in layer.selectedFeatures():
-                if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
-                    points_found += points_added
-                    crs_list.append(layer.crs().toProj())
-                else:
-                    log_warning(
-                        "Please select layers with LineString or Point geometries"
-                    )
-                    return False, points_found
-            return True, points_found
-
+        points_found = 0
+        crs_list = []
+        # Check for selected features from all layers
         for layer in all_layers:
-            if (
-                isinstance(layer, QgsVectorLayer)
-                and layer.isSpatial()
-                and layer.geometryType() == QgsWkbTypes.LineGeometry
-            ):
-                valid_features, points_found = loop_features(points_found, 2)
-                if not valid_features:
-                    return False
-            elif (
-                isinstance(layer, QgsVectorLayer)
-                and layer.isSpatial()
-                and layer.geometryType() == QgsWkbTypes.PointGeometry
-            ):
-                valid_features, points_found = loop_features(points_found, 1)
-                if not valid_features:
-                    return False
-            else:
-                pass
+            if isinstance(layer, QgsVectorLayer) and layer.isSpatial():
+                for feature in layer.selectedFeatures():
 
+                    if layer.geometryType() == QgsWkbTypes.LineGeometry:
+                        if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
+                            points_found += 2
+                            crs_list.append(layer.crs().toProj())
+                        else:
+                            log_warning(
+                                "Please select line features with LineString \
+                                geometries (instead of MultiLineString geometries)"
+                            )
+                            return False
+
+                    elif layer.geometryType() == QgsWkbTypes.PointGeometry:
+                        if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
+                            points_found += 1
+                            crs_list.append(layer.crs().toProj())
+                        else:
+                            log_warning(
+                                "Please select point features with Point \
+                                geometries (instead of MultiPoint geometries)"
+                            )
+                            return False
+
+                    else:
+                        log_warning(
+                            "Please select features only from vector line or point layers"
+                        )
+                        return False
+
+        if len(set(crs_list)) == 0:
+            log_warning("No vector features selected")
+            return False
         if len(set(crs_list)) != 1:
-            log_warning("Please select only layers with same CRS")
+            log_warning("Please select features only from layers with same CRS")
             return False
         elif points_found != 2:
             log_warning("Please select only either 1 line or 2 points")
@@ -286,48 +292,9 @@ class IntersectionLineCircle(SelectTool):
         message_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
         ret_a = message_box.exec()
         if ret_a == QMessageBox.Yes:
-            result_layer.deleteFeature(point_2.id())
+            result_layer.dataProvider().deleteFeatures([point_2.id()])
         else:
-            result_layer.deleteFeature(point_1.id())
-
-    def _add_result_layers(
-        self,
-        x_sol1: QVariant.Double,
-        y_sol1: QVariant.Double,
-        x_sol2: QVariant.Double,
-        y_sol2: QVariant.Double,
-        centroid_x: QVariant.Double,
-        centroid_y: QVariant.Double,
-    ) -> None:
-        """Triggered when result layer needs to be generated."""
-
-        old_active_layer = iface.activeLayer()
-
-        result_layer = self._create_result_layer()
-        point_1 = self._add_point_to_layer(
-            result_layer, (x_sol1, y_sol1, centroid_x, centroid_y), "Opt 1"
-        )
-        self._set_and_format_labels(result_layer)
-        QgsProject.instance().addMapLayer(result_layer)
-
-        # If the line does not form a tangent to the circle,
-        # two intersection points exists.
-        if x_sol1 != x_sol2:
-            result_layer.startEditing()
-            point_2 = self._add_point_to_layer(
-                result_layer, (x_sol2, y_sol2, centroid_x, centroid_y), "Opt 2"
-            )
-            self._select_point(result_layer, point_1, point_2)
-
-            result_layer.commitChanges()
-            iface.vectorLayerTools().stopEditing(result_layer)
-
-        output_path = self.ui.get_output_file_path()
-        if output_path != "":
-            write_output_to_file(result_layer, output_path)
-            QgsProject.instance().removeMapLayer(result_layer)
-
-        iface.setActiveLayer(old_active_layer)
+            result_layer.dataProvider().deleteFeatures([point_1.id()])
 
     def _extract_points(self) -> LineCoordinates:
         """Extract start and end point coordinates which explicitly determine
@@ -386,7 +353,7 @@ class IntersectionLineCircle(SelectTool):
             - Decimal("4.0") * parameters[0] * parameters[2]
         )
         if sqrt_in < 0.0 or parameters[0] == 0.0:
-            log_warning("There is no intersection point(s)!")
+            log_warning("There are no intersection points!")
             return
 
         # Computing the coordinates for the intersection point(s)
@@ -420,15 +387,47 @@ class IntersectionLineCircle(SelectTool):
 
         # Check that the intersection point(s) lie(s) in the
         # map canvas extent
-        if not check_within_canvas((x_sol1, y_sol1)):
-            log_warning("Intersection point 1 lies outside of the map canvas!")
-            return
-        if not check_within_canvas((x_sol2, y_sol2)):
-            log_warning("Intersection point 2 lies outside of the map canvas!")
-            return
+        results_within_canvas = {}
+        if check_within_canvas((x_sol1, y_sol1)):
+            results_within_canvas['Opt 1'] = (x_sol1, y_sol1)
+        if check_within_canvas((x_sol2, y_sol2)):
+            results_within_canvas['Opt 2'] = (x_sol2, y_sol2)
+
+        res_count = len(results_within_canvas)
 
         centroid_x = float(centroid[0])
         centroid_y = float(centroid[1])
 
         # Add result layer to map canvas
-        self._add_result_layers(x_sol1, y_sol1, x_sol2, y_sol2, centroid_x, centroid_y)
+        old_active_layer = iface.activeLayer()
+        result_layer = self._create_result_layer()
+
+        if res_count == 0:
+            log_warning("Both intersection points lie outside of the map canvas!")
+        elif res_count == 1:
+            log_warning("One intersection point lies outside of the map canvas!")
+        elif x_sol1 == x_sol2:
+            del results_within_canvas['Opt 2']
+
+        self._set_and_format_labels(result_layer)
+        QgsProject.instance().addMapLayer(result_layer)
+
+        points = []
+        for point_name, sol in results_within_canvas.items():
+            point = self._add_point_to_layer(
+                result_layer, (sol[0], sol[1],  centroid_x, centroid_y), point_name
+            )
+            points.append(point)
+
+        if len(points) == 2:
+            self._select_point(result_layer, points[0], points[1])
+
+        result_layer.commitChanges()
+        iface.vectorLayerTools().stopEditing(result_layer)
+
+        output_path = self.ui.get_output_file_path()
+        if output_path != "":
+            write_output_to_file(result_layer, output_path)
+            QgsProject.instance().removeMapLayer(result_layer)
+
+        iface.setActiveLayer(old_active_layer)
