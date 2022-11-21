@@ -106,7 +106,11 @@ class IntersectionLines:
 
         selected_layers = []
         for layer in all_layers:
-            if len(layer.selectedFeatures()) > 0:
+            if (
+                isinstance(layer, QgsVectorLayer)
+                and layer.isSpatial()
+                and len(layer.selectedFeatures()) > 0
+            ):
                 selected_layers.append(layer)
 
         # CASE ONLY LINES
