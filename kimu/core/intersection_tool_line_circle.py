@@ -7,6 +7,7 @@ from qgis.core import (
     QgsCoordinateReferenceSystem,
     QgsFeature,
     QgsField,
+    QgsFillSymbol,
     QgsGeometry,
     QgsPalLayerSettings,
     QgsPointXY,
@@ -244,6 +245,31 @@ class IntersectionLineCircle(SelectTool):
         result_layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
         return result_layer
 
+    def _create_buffer(self, centroid: List[Decimal]) -> QgsVectorLayer:
+        buffer_layer = QgsVectorLayer("Polygon", "pointbuffer", "memory")
+        buffer_layer.setCrs(self.crs)
+        geom = QgsGeometry.fromPointXY(QgsPointXY(centroid[0], centroid[1]))
+        buffer_feat = QgsFeature()
+        buffer_geom = geom.buffer(self.ui.get_radius(), 10)
+        buffer_feat.setGeometry(buffer_geom)
+        buffer_layer.startEditing()
+        buffer_layer.dataProvider().addFeature(buffer_feat)
+
+        buffer_layer.setName(tr("Intersecting circle"))
+        symbol = QgsFillSymbol.createSimple(
+            {
+                'color': 'transparent',
+                'outline_color': 'blue',
+                'outline_width': 0.5,
+                'outline_style': 'dot'
+            }
+        )
+        buffer_layer.renderer().setSymbol(symbol)
+        buffer_layer.triggerRepaint()
+        buffer_layer.commitChanges()
+        QgsProject.instance().addMapLayer(buffer_layer)
+        return buffer_layer
+
     def _add_point_to_layer(
         self, layer: QgsVectorLayer, coords: Tuple[float, float, float, float], id: str
     ) -> QgsFeature:
@@ -424,7 +450,9 @@ class IntersectionLineCircle(SelectTool):
             points.append(point)
 
         if len(points) == 2:
+            buffer_layer = self._create_buffer(centroid)
             self._select_point(result_layer, points[0], points[1])
+            QgsProject.instance().removeMapLayer(buffer_layer)
 
         result_layer.commitChanges()
         iface.vectorLayerTools().stopEditing(result_layer)
