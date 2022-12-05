@@ -54,6 +54,7 @@ class IntersectionLineCircle(SelectTool):
             if isinstance(layer, QgsVectorLayer) and layer.isSpatial():
                 for feature in layer.selectedFeatures():
 
+                    # Line geometries
                     if layer.geometryType() == QgsWkbTypes.LineGeometry:
                         if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
                             points_found += 2
@@ -65,6 +66,7 @@ class IntersectionLineCircle(SelectTool):
                             )
                             return False
 
+                    # Point geometry
                     elif layer.geometryType() == QgsWkbTypes.PointGeometry:
                         if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
                             points_found += 1
@@ -75,6 +77,11 @@ class IntersectionLineCircle(SelectTool):
                                 geometries (instead of MultiPoint geometries)"
                             )
                             return False
+
+                    # Curve geometry
+                    elif QgsWkbTypes.isCurvedType(layer.wkbType()):
+                        points_found += 2
+                        crs_list.append(layer.crs().toProj())
 
                     else:
                         log_warning(
