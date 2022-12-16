@@ -26,13 +26,9 @@ from qgis.utils import iface
 from ..qgis_plugin_tools.tools.i18n import tr
 from ..ui.line_circle_dockwidget import LineCircleDockWidget
 from .click_tool import ClickTool
+from .geodetic_objects import Line
 from .select_tool import SelectTool
-from .tool_functions import (
-    LineCoordinates,
-    check_within_canvas,
-    log_warning,
-    write_output_to_file,
-)
+from .tool_functions import check_within_canvas, log_warning, write_output_to_file
 
 
 class IntersectionLineCircle(SelectTool):
@@ -134,7 +130,7 @@ class IntersectionLineCircle(SelectTool):
 
     def _calculate_intersection_parameters(
         # self, line_coords: List[Decimal], centroid: List[Decimal]
-        self, line_coords: LineCoordinates, centroid: List[Decimal]
+        self, line_coords: Line, centroid: List[Decimal]
     ) -> List[Decimal]:
         """Calculate values for a, b and c parameters"""
         # Radius is given in crs units (meters for EPSG: 3067)
@@ -329,7 +325,7 @@ class IntersectionLineCircle(SelectTool):
         else:
             result_layer.dataProvider().deleteFeatures([point_1.id()])
 
-    def _extract_points(self) -> LineCoordinates:
+    def _extract_points(self) -> Line:
         """Extract start and end point coordinates which explicitly determine
         the line feature intersecting with the user defined circle."""
         all_layers = QgsProject.instance().mapLayers().values()
@@ -345,7 +341,7 @@ class IntersectionLineCircle(SelectTool):
 
         # CASE LINE
         if all(
-            layer.geometryType() == QgsWkbTypes.LineGeometry
+            layer.geometryType() == QgsWkbTypes.LineString
             for layer in selected_layers
         ):
             for layer in selected_layers:
@@ -353,32 +349,50 @@ class IntersectionLineCircle(SelectTool):
                     line_feat = feat.geometry().asPolyline()
                     start_point = QgsPointXY(line_feat[0])
                     end_point = QgsPointXY(line_feat[-1])
-                    line_coords = LineCoordinates(
+                    line_coords = Line(
                         x1=Decimal(start_point.x()),
                         x2=Decimal(end_point.x()),
                         y1=Decimal(start_point.y()),
                         y2=Decimal(end_point.y())
                     )
 
+        # CASE CURVE
+        elif all(
+            layer.geometryType() == QgsWkbTypes.CompoundCurve
+            for layer in selected_layers
+        ):
+            for layer in selected_layers:
+                for feat in layer.selectedFeatures():
+                    geom = feat.geometry()
+                    for g in geom:
+                        print(g)
+                    pass  # TODO
+
         # CASE POINTS
-        else:
+        elif all(
+            layer.geometryType() == QgsWkbTypes.Point
+            for layer in selected_layers
+        ):
             points = []
             for layer in selected_layers:
                 for feat in layer.selectedFeatures():
                     points.append(feat.geometry().asPoint())
 
             # Create a line out of the two lone points
-            line_coords = LineCoordinates(
+            line_coords = Line(
                 x1=Decimal(points[0].x()),
                 x2=Decimal(points[1].x()),
                 y1=Decimal(points[0].y()),
                 y2=Decimal(points[1].y())
             )
 
+        else:
+            raise Exception(f"Unsupported geometry type found: {layer.geometryType()}")
+
         return line_coords
 
     def _intersect(
-        self, line_coords: LineCoordinates, parameters: List[Decimal], centroid: List[Decimal]
+        self, line_coords: Line, parameters: List[Decimal], centroid: List[Decimal]
     ) -> None:
         """Determine the intersection point(s) of the selected
         line and implicitly determined (centroid+radius) circle."""
