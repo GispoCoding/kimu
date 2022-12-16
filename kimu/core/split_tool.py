@@ -37,27 +37,7 @@ class SplitTool(SelectTool):
     def canvasPressEvent(self, event: QgsMapMouseEvent) -> None:  # noqa: N802
         """Handles split tool canvas click event.
         Splits line to N parts, extracts vertices."""
-        self.layer = self.iface.activeLayer()
-        if (
-            isinstance(self.layer, QgsVectorLayer)
-            and self.layer.isSpatial()
-            and self.layer.geometryType() == QgsWkbTypes.LineGeometry
-        ):
-            pass
-        else:
-            log_warning("Please select a line layer")
-            return
-
-        geometry = self._identify_and_extract_single_geometry(event)
-        if geometry.isEmpty():  # No geometry identified
-            return
-
-        split_line_layer = self._create_split_line_layer(geometry)
-        self._set_split_layer_style(split_line_layer)
-        QgsProject.instance().addMapLayer(split_line_layer)
-
-        vertex_layer = self._create_vertex_layer(split_line_layer)
-        QgsProject.instance().addMapLayer(vertex_layer)
+        self._run(event)
 
     def _identify_and_extract_single_geometry(
         self, event: QgsMapMouseEvent
@@ -129,3 +109,26 @@ class SplitTool(SelectTool):
         vertex_layer.renderer().symbol().setSize(2)
         vertex_layer.renderer().symbol().setColor(QColor.fromRgb(255, 192, 203))
         return vertex_layer
+
+    def _run(self, event: QgsMapMouseEvent) -> None:
+        self.layer = self.iface.activeLayer()
+        if (
+            isinstance(self.layer, QgsVectorLayer)
+            and self.layer.isSpatial()
+            and self.layer.geometryType() == QgsWkbTypes.LineGeometry
+        ):
+            pass
+        else:
+            log_warning("Please select a line layer")
+            return
+
+        geometry = self._identify_and_extract_single_geometry(event)
+        if geometry.isEmpty():  # No geometry identified
+            return
+
+        split_line_layer = self._create_split_line_layer(geometry)
+        self._set_split_layer_style(split_line_layer)
+        QgsProject.instance().addMapLayer(split_line_layer)
+
+        vertex_layer = self._create_vertex_layer(split_line_layer)
+        QgsProject.instance().addMapLayer(vertex_layer)

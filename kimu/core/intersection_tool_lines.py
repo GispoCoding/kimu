@@ -5,17 +5,13 @@ from qgis.core import (
     QgsFeature,
     QgsField,
     QgsGeometry,
-    QgsPalLayerSettings,
     QgsPointXY,
     QgsProject,
-    QgsTextBufferSettings,
-    QgsTextFormat,
     QgsVectorLayer,
-    QgsVectorLayerSimpleLabeling,
     QgsWkbTypes,
 )
 from qgis.PyQt.QtCore import QVariant
-from qgis.PyQt.QtGui import QColor, QFont
+from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QFileDialog
 from qgis.utils import iface
 
@@ -27,6 +23,7 @@ from .tool_functions import (
     create_intersecting_object_pairs,
     log_warning,
     select_intersection_point,
+    set_and_format_labels,
     solve_all_intersections,
     write_output_to_file,
 )
@@ -48,36 +45,38 @@ class IntersectionLines:
         crs_list = []
         # Check for selected features from all layers
         for layer in all_layers:
-            if isinstance(layer, QgsVectorLayer) and layer.isSpatial():
-                for feature in layer.selectedFeatures():
+            if not (isinstance(layer, QgsVectorLayer) and layer.isSpatial()):
+                continue
 
-                    if layer.geometryType() == QgsWkbTypes.LineGeometry:
-                        if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
-                            points_found += 2
-                            crs_list.append(layer.crs().toProj())
-                        else:
-                            log_warning(
-                                "Please select line features with LineString \
-                                geometries (instead of MultiLineString geometries)"
-                            )
-                            return False
+            for feature in layer.selectedFeatures():
 
-                    elif layer.geometryType() == QgsWkbTypes.PointGeometry:
-                        if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
-                            points_found += 1
-                            crs_list.append(layer.crs().toProj())
-                        else:
-                            log_warning(
-                                "Please select point features with Point \
-                                geometries (instead of MultiPoint geometries)"
-                            )
-                            return False
-
+                if layer.geometryType() == QgsWkbTypes.LineGeometry:
+                    if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
+                        points_found += 2
+                        crs_list.append(layer.crs().toProj())
                     else:
                         log_warning(
-                            "Please select features only from vector line or point layers"
+                            "Please select line features with LineString \
+                            geometries (instead of MultiLineString geometries)"
                         )
                         return False
+
+                elif layer.geometryType() == QgsWkbTypes.PointGeometry:
+                    if QgsWkbTypes.isSingleType(feature.geometry().wkbType()):
+                        points_found += 1
+                        crs_list.append(layer.crs().toProj())
+                    else:
+                        log_warning(
+                            "Please select point features with Point \
+                            geometries (instead of MultiPoint geometries)"
+                        )
+                        return False
+
+                else:
+                    log_warning(
+                        "Please select features only from vector line or point layers"
+                    )
+                    return False
 
         if len(set(crs_list)) == 0:
             log_warning("No vector features selected")
@@ -136,26 +135,6 @@ class IntersectionLines:
                 point_features.append(point)
             return point_features
 
-    def _set_and_format_labels(self, layer: QgsVectorLayer) -> None:
-        layer_settings = QgsPalLayerSettings()
-        text_format = QgsTextFormat()
-        text_format.setFont(QFont("FreeMono", 10))
-        text_format.setSize(10)
-        buffer_settings = QgsTextBufferSettings()
-        buffer_settings.setEnabled(True)
-        buffer_settings.setSize(0.1)
-        buffer_settings.setColor(QColor("black"))
-        text_format.setBuffer(buffer_settings)
-        layer_settings.setFormat(text_format)
-        layer_settings.fieldName = "id"
-        layer_settings.placement = 0
-        layer_settings.dist = 2.0
-        layer_settings.enabled = True
-        layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
-        layer.setLabelsEnabled(True)
-        layer.setLabeling(layer_settings)
-        layer.triggerRepaint()
-
     def run(self) -> None:
         """Main method.
 
@@ -171,45 +150,47 @@ class IntersectionLines:
            delete unselected points
         8. Ask user if layer should be saved to disk. If yes, remove the temporary layer
         """
-        if self._run_initial_checks():
-            old_active_layer = iface.activeLayer()
-            selected_geodetic_objects = construct_geodetic_objects_from_selections()
-            pairs = create_intersecting_object_pairs(selected_geodetic_objects)
-            all_i_coords = solve_all_intersections(pairs)
-            if len(all_i_coords) == 0:
-                log_warning("No intersection points!")
-                return
+        if not self._run_initial_checks():
+            return
 
-            coords_in_extent = [
-                coords for coords in all_i_coords if check_within_canvas(coords)
-            ]
-            if len(coords_in_extent) == 0:
-                log_warning(
-                    "All potential intersection points lie outside of the map canvas!"
-                )
-                return
+        old_active_layer = iface.activeLayer()
+        selected_geodetic_objects = construct_geodetic_objects_from_selections()
+        pairs = create_intersecting_object_pairs(selected_geodetic_objects)
+        all_i_coords = solve_all_intersections(pairs)
+        if len(all_i_coords) == 0:
+            log_warning("No intersection points!")
+            return
 
-            result_layer = self._create_result_layer()
-            added_points = self.add_all_points(coords_in_extent, result_layer)
-            self._set_and_format_labels(result_layer)
-            if len(added_points) > 1:
-                select_intersection_point(result_layer, len(added_points))
+        coords_in_extent = [
+            coords for coords in all_i_coords if check_within_canvas(coords)
+        ]
+        if len(coords_in_extent) == 0:
+            log_warning(
+                "All potential intersection points lie outside of the map canvas!"
+            )
+            return
 
-            result_layer.commitChanges()
-            iface.vectorLayerTools().stopEditing(result_layer)
+        result_layer = self._create_result_layer()
+        added_points = self.add_all_points(coords_in_extent, result_layer)
+        set_and_format_labels(result_layer)
+        if len(added_points) > 1:
+            select_intersection_point(result_layer, len(added_points))
 
-            # Ask if user wants to save to file
-            self.dlg = IntersectLinesDialog(iface)
-            self.dlg.pushButton.clicked.connect(self.select_output_file)
-            self.dlg.show()
-            save_to_file = self.dlg.exec_()
+        result_layer.commitChanges()
+        iface.vectorLayerTools().stopEditing(result_layer)
 
-            if save_to_file:
-                output_path = self.dlg.lineEdit.text()
-                if output_path != "":
-                    write_output_to_file(result_layer, output_path)
-                    QgsProject.instance().removeMapLayer(result_layer.id())
-                else:
-                    log_warning("Please specify an output path")
+        # Ask if user wants to save to file
+        self.dlg = IntersectLinesDialog(iface)
+        self.dlg.pushButton.clicked.connect(self.select_output_file)
+        self.dlg.show()
+        save_to_file = self.dlg.exec_()
 
-            iface.setActiveLayer(old_active_layer)
+        if save_to_file:
+            output_path = self.dlg.lineEdit.text()
+            if output_path != "":
+                write_output_to_file(result_layer, output_path)
+                QgsProject.instance().removeMapLayer(result_layer.id())
+            else:
+                log_warning("Please specify an output path")
+
+        iface.setActiveLayer(old_active_layer)

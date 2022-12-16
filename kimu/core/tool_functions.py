@@ -3,7 +3,17 @@ from decimal import Decimal
 from itertools import combinations
 from typing import List, Tuple
 
-from qgis.core import QgsProject, QgsVectorFileWriter, QgsVectorLayer, QgsWkbTypes
+from qgis.core import (
+    QgsPalLayerSettings,
+    QgsProject,
+    QgsTextBufferSettings,
+    QgsTextFormat,
+    QgsVectorFileWriter,
+    QgsVectorLayer,
+    QgsVectorLayerSimpleLabeling,
+    QgsWkbTypes,
+)
+from qgis.PyQt.QtGui import QColor, QFont
 from qgis.PyQt.QtWidgets import QMessageBox, QPushButton
 from qgis.utils import iface
 
@@ -290,6 +300,27 @@ def construct_geodetic_objects_from_selections() -> List[GeodeticObject]:
                 raise Exception("Unsupported geometry typed")
 
     return geodetic_objects
+
+
+def set_and_format_labels(layer: QgsVectorLayer) -> None:
+    layer_settings = QgsPalLayerSettings()
+    text_format = QgsTextFormat()
+    text_format.setFont(QFont("FreeMono", 10))
+    text_format.setSize(10)
+    buffer_settings = QgsTextBufferSettings()
+    buffer_settings.setEnabled(True)
+    buffer_settings.setSize(0.1)
+    buffer_settings.setColor(QColor("black"))
+    text_format.setBuffer(buffer_settings)
+    layer_settings.setFormat(text_format)
+    layer_settings.fieldName = "id"
+    layer_settings.placement = 0
+    layer_settings.dist = 2.0
+    layer_settings.enabled = True
+    layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
+    layer.setLabelsEnabled(True)
+    layer.setLabeling(layer_settings)
+    layer.triggerRepaint()
 
 
 def write_output_to_file(layer: QgsVectorLayer, output_path: str) -> None:
