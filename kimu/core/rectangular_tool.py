@@ -3,10 +3,8 @@ from decimal import Decimal
 from typing import List
 
 from PyQt5.QtWidgets import QMessageBox
-from qgis import processing
 from qgis.core import (
     QgsFeature,
-    QgsFeatureRequest,
     QgsField,
     QgsGeometry,
     QgsPalLayerSettings,
@@ -74,17 +72,6 @@ class RectangularMapping(SelectTool):
                 )
                 return False
 
-            temp_layer = selected_layer.materialize(
-                QgsFeatureRequest().setFilterFids(selected_layer.selectedFeatureIds())
-            )
-            params1 = {"INPUT": temp_layer, "OUTPUT": "memory:"}
-            vertices = processing.run("native:extractvertices", params1)
-            vertices_layer = vertices["OUTPUT"]
-
-            if vertices_layer.featureCount() > 2:
-                log_warning("Please use Explode line(s) tool first!")
-                return False
-
         elif selected_layer.geometryType() == QgsWkbTypes.PointGeometry:
 
             if len(selected_layer.selectedFeatures()) != 2:
@@ -117,31 +104,26 @@ class RectangularMapping(SelectTool):
         """Store the coordinates of the selected line feature."""
 
         if self.iface.activeLayer().geometryType() == QgsWkbTypes.LineGeometry:
+            print("here")
             selected_line_geometry = (
                 self.iface.activeLayer().selectedFeatures()[0].geometry().asPolyline()
             )
 
             # Checks that the coordinate values get stored in the correct order
-            if (
-                QgsGeometry.fromPointXY(QgsPointXY(selected_line_geometry[0])).equals(
-                    QgsGeometry.fromPointXY(
-                        QgsPointXY(float(start_point[0]), float(start_point[1]))
-                    )
+            if QgsGeometry.fromPointXY(QgsPointXY(selected_line_geometry[0])).equals(
+                QgsGeometry.fromPointXY(
+                    QgsPointXY(float(start_point[0]), float(start_point[1]))
                 )
-                is True
             ):
-                point1 = QgsPointXY(selected_line_geometry[0])
-                point2 = QgsPointXY(selected_line_geometry[-1])
-            elif (
-                QgsGeometry.fromPointXY(QgsPointXY(selected_line_geometry[-1])).equals(
-                    QgsGeometry.fromPointXY(
-                        QgsPointXY(float(start_point[0]), float(start_point[1]))
-                    )
+                p1 = QgsPointXY(selected_line_geometry[0])
+                p2 = QgsPointXY(selected_line_geometry[-1])
+            elif QgsGeometry.fromPointXY(QgsPointXY(selected_line_geometry[-1])).equals(
+                QgsGeometry.fromPointXY(
+                    QgsPointXY(float(start_point[0]), float(start_point[1]))
                 )
-                is True
             ):
-                point1 = QgsPointXY(selected_line_geometry[-1])
-                point2 = QgsPointXY(selected_line_geometry[0])
+                p1 = QgsPointXY(selected_line_geometry[-1])
+                p2 = QgsPointXY(selected_line_geometry[0])
             else:
                 log_warning(
                     "Please select start or end point of the "
@@ -149,48 +131,21 @@ class RectangularMapping(SelectTool):
                 )
                 return []
 
-            line_coords = [
-                Decimal(point1.x()),
-                Decimal(point1.y()),
-                Decimal(point2.x()),
-                Decimal(point2.y()),
-            ]
         else:
             # Checks which of the selected points the user clicks on
-            if (
-                self.iface.activeLayer()
-                .selectedFeatures()[0]
-                .geometry()
-                .equals(
-                    QgsGeometry.fromPointXY(
-                        QgsPointXY(float(start_point[0]), float(start_point[1]))
-                    )
-                )
-                is True
+            point1 = self.iface.activeLayer().selectedFeatures()[0].geometry().asPoint()
+            point2 = self.iface.activeLayer().selectedFeatures()[1].geometry().asPoint()
+            if point1.x() == float(start_point[0]) and point1.y() == float(
+                start_point[1]
             ):
-                point1 = (
-                    self.iface.activeLayer().selectedFeatures()[0].geometry().asPoint()
-                )
-                point2 = (
-                    self.iface.activeLayer().selectedFeatures()[1].geometry().asPoint()
-                )
-            elif (
-                self.iface.activeLayer()
-                .selectedFeatures()[1]
-                .geometry()
-                .equals(
-                    QgsGeometry.fromPointXY(
-                        QgsPointXY(float(start_point[0]), float(start_point[1]))
-                    )
-                )
-                is True
+                p1 = point1
+                p2 = point2
+
+            elif point2.x() == float(start_point[0]) and point2.y() == float(
+                start_point[1]
             ):
-                point1 = (
-                    self.iface.activeLayer().selectedFeatures()[1].geometry().asPoint()
-                )
-                point2 = (
-                    self.iface.activeLayer().selectedFeatures()[0].geometry().asPoint()
-                )
+                p1 = point2
+                p2 = point1
             else:
                 log_warning(
                     "Please select start or end point of the "
@@ -198,13 +153,12 @@ class RectangularMapping(SelectTool):
                 )
                 return []
 
-            line_coords = [
-                Decimal(point1.x()),
-                Decimal(point1.y()),
-                Decimal(point2.x()),
-                Decimal(point2.y()),
-            ]
-
+        line_coords = [
+            Decimal(p1.x()),
+            Decimal(p1.y()),
+            Decimal(p2.x()),
+            Decimal(p2.y()),
+        ]
         return line_coords
 
     @staticmethod

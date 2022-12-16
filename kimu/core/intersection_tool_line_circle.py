@@ -144,7 +144,7 @@ class IntersectionLineCircle(SelectTool):
             {
                 'color': 'transparent',
                 'outline_color': 'blue',
-                'outline_width': 0.5,
+                'outline_width': '0.5',
                 'outline_style': 'dot'
             }
         )

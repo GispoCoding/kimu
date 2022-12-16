@@ -328,7 +328,7 @@ def write_output_to_file(layer: QgsVectorLayer, output_path: str) -> None:
     writer_options = QgsVectorFileWriter.SaveVectorOptions()
     writer_options.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerAddFields
     # PyQGIS documentation doesnt tell what the last 2 str error outputs should be used for
-    error, explanation, _, _ = QgsVectorFileWriter.writeAsVectorFormatV3(
+    error, explanation = QgsVectorFileWriter.writeAsVectorFormatV2(
         layer,
         output_path,
         QgsProject.instance().transformContext(),
