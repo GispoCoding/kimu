@@ -154,7 +154,7 @@ def solve_line_intersection(line1: Line, line2: Line) -> List[Tuple[Decimal, Dec
 
 def solve_circle_and_line_intersections(
     circle: Circle, line: Line, tangent_tolerance: float = 1e-9
-) -> list[Tuple[Decimal, Decimal]]:
+) -> List[Tuple[Decimal, Decimal]]:
 
     (p1x, p1y, p2x, p2y) = (line.x1, line.y1, line.x2, line.y2)
     (cx, cy) = (circle.x0, circle.y0)
