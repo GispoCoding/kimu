@@ -80,50 +80,55 @@ In action:
 
 ### Intersect line and circle
 
-1. Make sure that you have a line layer active in the Layers panel.
-2. Utilize QGIS's selection tools to select (exactly one) line feature whose intersection point with the implicitly defined circle you wish to determine:
+1. Use the QGIS selection tools to select one line feature or two point features (that will form a line):
 ![QGIS's selection toolbar](/images/qgis_selection_tools.png "QGIS's selection toolbar")
 
-3. Click Intersect line and circle button -> the panel opens up into the right side of the QGIS.
-4. In the panel, insert a value for the implicitly definable circle radius. Press Enter.
+2. Click Intersect line and circle button -> the panel opens up into the right side of the QGIS.
+
+3. In the panel, insert a value for the implicitly definable circle radius. Press Enter.
 
 - Give the size of the radius in coordinate reference system units (e.g. for EPG:3067 in meters)
 
-5. Click any point feature / vertex point visible in the map canvas to be used as a centroid of the implicitly definable circle.
+4. Click any point feature / vertex point visible in the map canvas to be used as a centroid of the implicitly defined circle.
+
+5. Select which intersection point you wish to keep. While the pop-up window is open, the circle is shown as a temporary feature.
+
+- If the line does not genuinely intersect with the implicitly defined circle (just touches it), the tool will automatically show only 1 point
+
 6. Select already existing file (e.g. geopackage) into which you wish to store the obtained result point.
 
 - The coordinate reference system of the file must match with the coordinate reference system of the active layer!
-- You can leave this file path also empty
+- You can leave this file path also empty if you only need a QGIS temporary layer or want to save later
 
-7. Answer to the question the tool asks from you via a pop-up window.
-
-- If the line does not genuinely intersect with the implicitly defined circle (just touches it), the tool does not ask any questions but automatically produces the resulting scratch layer
 
 In action:
 
 ![Intersect line and circle](/images/intersect_line_circle.gif "Intersect line and circle")
 
-**Note.** The tool automatically enables suitable snapping configurations. However, if you want to be sure that QGIS snapped onto the right point feature / vertex point
-in step 5, you can take a look at the attribute table of the resulting layer and compare the coordinates of the applied centroid with the coordinates of the point
-you desired to utilize.
+**Note.** The tool automatically enables suitable snapping configurations. However, if you want to be sure that QGIS snapped onto the right point feature / vertex point, you can take a look at the attribute table of the resulting layer and compare the coordinates of the applied centroid with the coordinates of the point you desired to utilize.
 
 ### Intersect lines
 
-1. Make sure that you have a line layer active in the Layers panel.
-2. Utilize QGIS's selection tools to select the feature(s) you wish to find the intersection point for (from the currently active layer):
-![QGIS's selection toolbar](/images/qgis_selection_tools.png "QGIS's selection toolbar")
+1. Use the QGIS selection tools to select two line features, one line feature and 2 point feature or 4 point features: ![QGIS's selection toolbar](/images/qgis_selection_tools.png "QGIS's selection toolbar")
 
-- The intersecting line features must belong to the same line layer! If the lines belong to different layers, you can always navigate to
-Vector > Data Management Tools and use Merge Vector Layers tool
-- If your line layer has MultiLineString type of features, consider using Explode Lines tool first!
+- CompoundCurves can be used as line input too. In this case, the curve is extrapolated into a circle
+- If 4 points are used as the input, the tool will calculate all possible combinations and ask which intersection point is wanted
+- If your line layer has MultiLineString type of features, consider using Explode Lines tool first
 
-3.Click Intersect lines button.
+2. Click Intersect lines button.
+
+3. If there are multiple intersections points (if points and/or curves were used), select which intersection point to keep.
+
+4. Select already existing file (e.g. geopackage) into which you wish to store the obtained result point.
+
+- The coordinate reference system of the file must match with the coordinate reference system of the active layer!
+- You can leave this file path also empty if you only need a QGIS temporary layer or want to save later
+
 
 In action:
 
 ![Intersect lines](/images/intersect_lines.gif "Intersect lines")
 
-**Note.** In QGIS, a temporary scratch file can easily be exported and made permanent.
 
 ### Displace line
 
