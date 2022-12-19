@@ -142,7 +142,6 @@ def solve_line_intersection(line1: Line, line2: Line) -> List[Tuple[Decimal, Dec
 
     div = det(xdiff, ydiff)
     if div == 0:
-        log_warning("Lines are parallel; there is no intersection point!")
         return []
         # raise Exception('lines do not intersect')
 
@@ -166,7 +165,6 @@ def solve_circle_and_line_intersections(
     discriminant = circle.r ** Decimal(2) * dr ** Decimal(2) - big_d ** Decimal(2)
 
     if discriminant < 0:  # No intersection between circle and line
-        log_warning("Curve/circle does not intersect with the line!")
         return []
 
     # There may be 0, 1, or 2 intersections
@@ -206,7 +204,6 @@ def solve_circle_intersections(
         or (d < abs(circle1.r - circle2.r))
         or (d == 0 and circle1.r == circle2.r)
     ):
-        log_warning("Curves/circles don't intersect with each other!")
         return []
 
     a = (circle1.r**d2 - circle2.r**d2 + d**d2) / (d2 * d)
@@ -241,10 +238,8 @@ def select_intersection_point(layer: QgsVectorLayer, nr_points: int) -> None:
         button_4 = QPushButton("Opt 4")
         message_box.addButton(button_4, QMessageBox.ActionRole)
         button_4.clicked.connect(lambda: whichbtn(button_4))
-    elif nr_points == 5:
-        button_5 = QPushButton("Opt 5")
-        message_box.addButton(button_5, QMessageBox.ActionRole)
-        button_5.clicked.connect(lambda: whichbtn(button_5))
+    elif nr_points > 4:
+        raise Exception("More than 4 potential intersection points (not implemented)")
 
     def whichbtn(button: QPushButton) -> None:
         id = button.text()[-1]
@@ -266,7 +261,10 @@ def construct_geodetic_objects_from_selections() -> List[GeodeticObject]:
             and len(layer.selectedFeatures()) > 0
         ):
 
-            if layer.wkbType() == QgsWkbTypes.LineString:
+            if (
+                layer.wkbType() == QgsWkbTypes.LineString
+                or layer.wkbType() == QgsWkbTypes.LineStringZ
+            ):
                 for feat in layer.selectedFeatures():
                     vertices = [vertex for vertex in feat.geometry().vertices()]
                     line = Line(
@@ -277,7 +275,10 @@ def construct_geodetic_objects_from_selections() -> List[GeodeticObject]:
                     )
                     geodetic_objects.append(line)
 
-            elif layer.wkbType() == QgsWkbTypes.CompoundCurve:
+            elif (
+                layer.wkbType() == QgsWkbTypes.CompoundCurve
+                or layer.wkbType() == QgsWkbTypes.CompoundCurveZ
+            ):
                 for feat in layer.selectedFeatures():
                     vertices = [vertex for vertex in feat.geometry().vertices()]
                     arc = Arc(
@@ -290,14 +291,17 @@ def construct_geodetic_objects_from_selections() -> List[GeodeticObject]:
                     )
                     geodetic_objects.append(arc)
 
-            elif layer.wkbType() == QgsWkbTypes.Point:
+            elif (
+                layer.wkbType() == QgsWkbTypes.Point
+                or layer.wkbType() == QgsWkbTypes.PointZ
+            ):
                 for feat in layer.selectedFeatures():
                     vertices = [vertex for vertex in feat.geometry().vertices()]
                     point = Point(Decimal(vertices[0].x()), Decimal(vertices[0].y()))
                     geodetic_objects.append(point)
 
             else:
-                raise Exception("Unsupported geometry typed")
+                raise Exception("Unsupported geometry type")
 
     return geodetic_objects
 

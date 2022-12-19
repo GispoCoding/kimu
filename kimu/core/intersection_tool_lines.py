@@ -141,9 +141,9 @@ class IntersectionLines:
         The steps:
         1. Run initial checks (Only point and line features selected,
            correct number of features selected, same crs)
-        2. Extract points from selection
-        3. Calculate intersection coordinates (all possibilities if points were input data)
-        4. Check that lines are not parallel
+        2. Create geodetic objects from selections
+        3. Create intersecting line pairs
+        4. Calculate intersection coordinates in extent
         5. Create result layer
         6. Populate result layer with intersection point(s)
         7. If multiple options, ask user which one to keep one by one and
@@ -157,7 +157,7 @@ class IntersectionLines:
         selected_geodetic_objects = construct_geodetic_objects_from_selections()
         pairs = create_intersecting_object_pairs(selected_geodetic_objects)
         all_i_coords = solve_all_intersections(pairs)
-        if len(all_i_coords) == 0:
+        if all_i_coords is None or len(all_i_coords) == 0:
             log_warning("No intersection points!")
             return
 

@@ -7,25 +7,25 @@ from qgis.core import (
     QgsFeature,
     QgsField,
     QgsGeometry,
-    QgsPalLayerSettings,
     QgsPointXY,
     QgsProject,
-    QgsTextBufferSettings,
-    QgsTextFormat,
     QgsVectorLayer,
-    QgsVectorLayerSimpleLabeling,
     QgsWkbTypes,
 )
 from qgis.gui import QgsMapToolEmitPoint
 from qgis.PyQt.QtCore import QVariant
-from qgis.PyQt.QtGui import QColor, QFont
 from qgis.utils import iface
 
 from ..qgis_plugin_tools.tools.i18n import tr
 from ..ui.rectangular_dockwidget import RectangularDockWidget
 from .click_tool import ClickTool
 from .select_tool import SelectTool
-from .tool_functions import check_within_canvas, log_warning, write_output_to_file
+from .tool_functions import (
+    check_within_canvas,
+    log_warning,
+    set_and_format_labels,
+    write_output_to_file,
+)
 
 
 class RectangularMapping(SelectTool):
@@ -104,7 +104,6 @@ class RectangularMapping(SelectTool):
         """Store the coordinates of the selected line feature."""
 
         if self.iface.activeLayer().geometryType() == QgsWkbTypes.LineGeometry:
-            print("here")
             selected_line_geometry = (
                 self.iface.activeLayer().selectedFeatures()[0].geometry().asPolyline()
             )
@@ -538,26 +537,8 @@ class RectangularMapping(SelectTool):
             layer.setName(tr("Corner 2"))
         else:
             layer.setName(tr(f"Corner {temp} options"))
-        layer.renderer().symbol().setSize(2)
-        layer.renderer().symbol().setColor(QColor.fromRgb(250, 0, 0))
-        layer_settings = QgsPalLayerSettings()
-        text_format = QgsTextFormat()
-        text_format.setFont(QFont("FreeMono", 10))
-        text_format.setSize(10)
-        buffer_settings = QgsTextBufferSettings()
-        buffer_settings.setEnabled(True)
-        buffer_settings.setSize(0.1)
-        buffer_settings.setColor(QColor("black"))
-        text_format.setBuffer(buffer_settings)
-        layer_settings.setFormat(text_format)
-        layer_settings.fieldName = "id"
-        layer_settings.placement = 0
-        layer_settings.dist = 2.0
-        layer_settings.enabled = True
-        layer_settings = QgsVectorLayerSimpleLabeling(layer_settings)
-        layer.setLabelsEnabled(True)
-        layer.setLabeling(layer_settings)
 
+        set_and_format_labels(layer)
         return layer
 
     @staticmethod
