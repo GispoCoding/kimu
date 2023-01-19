@@ -7,7 +7,7 @@
 [![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 
-This QGIS3 plugin containing geodesic tools and is developed for
+This QGIS3 plugin is developed to expand the set of tools for geodesic work in QGIS. The main functionalities of the plugin are
 - rectangular mapping
 - finding intersection point of a line and a circle
 - finding intersection point of two lines
@@ -64,17 +64,16 @@ three inserted wall lengths specify the locations of all four building corner po
 - However, if you insert "an extra" distance in the list, it does not matter since the tool has a check preventing it from
 mapping duplicate points
 6. Select already existing file (e.g. geopackage) into which you wish to store the obtained result layer.
-
 - The coordinate reference system of the file must match with the coordinate reference system of the active layer!
 - You can leave this file path also empty
-
 7. Click start / end point of the selected line feature to determine the point from which the tool will start the
 rectangular mapping.
 8. Answer to the questions the tool asks from you via a pop-up window.
 
 In action:
 
-![Rectangular mapping](/images/rectangular_mapping.gif "Rectangular mapping")
+![rectangular_mapping](https://user-images.githubusercontent.com/113038549/213459067-5b09dfaa-a2f6-4a26-9677-d0a74136e9a2.gif)
+
 
 **Note.** The tool automatically enables suitable snapping configurations.
 
@@ -103,7 +102,7 @@ In action:
 
 In action:
 
-![Intersect line and circle](/images/intersect_line_circle.gif "Intersect line and circle")
+![intersect_line_and_circle](https://user-images.githubusercontent.com/113038549/213459369-5fba9b97-07af-47cd-9852-e9aa49e6909a.gif)
 
 **Note.** The tool automatically enables suitable snapping configurations. However, if you want to be sure that QGIS snapped onto the right point feature / vertex point, you can take a look at the attribute table of the resulting layer and compare the coordinates of the applied centroid with the coordinates of the point you desired to utilize.
 
@@ -127,7 +126,7 @@ In action:
 
 In action:
 
-![Intersect lines](/images/intersect_lines.gif "Intersect lines")
+![intersect_lines](https://user-images.githubusercontent.com/113038549/213459507-b32ed94a-d761-49a6-922b-87ad7b96855f.gif)
 
 
 ### Displace line
@@ -146,9 +145,8 @@ of the original line feature
 5. Answer to the question the tool asks from you via a pop-up window.
 
 In action:
-![Displace line](/images/displace_line.gif "Displace line")
-or
-![Displace line 2](/images/displace_line2.gif "Displace line 2")
+
+![displace_line](https://user-images.githubusercontent.com/113038549/213459863-fd802914-b908-4ae2-9c6d-9734cff0475a.gif)
 
 **Note.** In QGIS, a temporary scratch file can easily be exported and made permanent.
 
@@ -164,7 +162,7 @@ or
 
 In action:
 
-![Explode polygon](/images/explode_polygon.gif "Explode polygon")
+![explode_polygon](https://user-images.githubusercontent.com/113038549/213459933-bac4b1cc-d342-4d15-9432-6210cb9b844f.gif)
 
 **Note.** In QGIS, a temporary scratch file can easily be exported and made permanent.
 
@@ -173,12 +171,11 @@ In action:
 1. Make sure that you have a line layer active in the Layers panel.
 2. Utilize QGIS's selection tools to select the feature(s) you wish to explode (from the currently active layer):
 ![QGIS's selection toolbar](/images/qgis_selection_tools.png "QGIS's selection toolbar")
-
 - It is possible to select all the features in the layer, too!
-
-3.Click Explode line(s) button.
+3. Click Explode line(s) button. The tool will give both line segments and points as a result.
 
 In action:
+
 ![Explode lines](/images/explode_lines.gif "Explode lines")
 
 **Note.** In QGIS, a temporary scratch file can easily be exported and made permanent.
@@ -206,7 +203,8 @@ In action:
 4. Click the line feature you wish to split.
 
 In action:
-![Split line](/images/split_line.gif "Split line")
+
+![split_line](https://user-images.githubusercontent.com/113038549/213460098-96133745-881f-4534-846b-b9019567fc9e.gif)
 
 **Note.** In QGIS, a temporary scratch file can easily be exported and made permanent.
 
