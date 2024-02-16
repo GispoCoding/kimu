@@ -2,10 +2,10 @@
 name=Geodesic Tools
 description=QGIS3 plugin containing geodesic tools for rectangular mapping, finding intersection point of a line and a circle, finding intersection point of two lines and displacing a line feature. In addition to these main functionalities the plugin contains tools for data manipulation (e.g. explode polygon to lines or split a line).
 about=Use geodesic tools to perform rectangular mapping or to find out intersection points of two lines or line and circle. Plugin contains also some tools supporting these three main functionalities.
-version=1.0.1
+version=2.1.1
 qgisMinimumVersion=3.10
 author=Gispo Ltd.
-email=pauliina@gispo.fi
+email=niko@gispo.fi
 # changelog=
 tags=python, geodesic calculus
 repository=https://github.com/GispoCoding/kimu

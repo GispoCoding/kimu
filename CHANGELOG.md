@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.1.1] - 2024-02-16
+
+- Added temporary visual for intersecting circle
+- Fix bug related to raster layers present
+- Added support for CompoundCurves
+- fixed z-layer compability saving errors
+- Other bug fixes and improved documetnation
+
 ## [2.0.3] - 2022
 - TBD
 
